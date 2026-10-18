@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0b1026">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>Chuva de Meteoros</title>
+<style>
+  html,body{margin:0;height:100%;background:#0b1026;overflow:hidden;overscroll-behavior:none;touch-action:none;
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;font-family:system-ui,sans-serif}
+  canvas{display:block;width:100vw;height:100vh;height:100dvh}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+(() => {
+  const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+  let W, H, dpr;
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = cv.clientWidth; H = cv.clientHeight;
+    cv.width = W * dpr; cv.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  addEventListener('resize', resize); resize();
+
+  let best = 0;
+  try { best = +localStorage.getItem('meteoros-best') || 0; } catch (e) {}
+
+  const stars = Array.from({length: 60}, () => ({x: Math.random(), y: Math.random(), s: Math.random() * 1.5 + .5}));
+  let state = 'menu', score = 0, lives = 3, t = 0, spawnT = 0, starT = 0, shake = 0;
+  let ship = {x: 0, tx: 0, y: 0, r: 16};
+  let rocks = [], gems = [], parts = [];
+
+  function audio() {
+    try { return audio.c || (audio.c = new (window.AudioContext || window.webkitAudioContext)()); } catch (e) { return null; }
+  }
+  function beep(f, d, type = 'sine', v = .08) {
+    const a = audio(); if (!a) return;
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = type; o.frequency.value = f; g.gain.value = v;
+    g.gain.exponentialRampToValueAtTime(.0001, a.currentTime + d);
+    o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime + d);
+  }
+
+  function start() {
+    score = 0; lives = 3; t = 0; spawnT = 0; starT = 0; rocks = []; gems = []; parts = [];
+    ship.x = ship.tx = W / 2; ship.y = H - Math.max(110, H * .16);
+    state = 'play';
+    const a = audio(); if (a && a.state === 'suspended') a.resume();
+  }
+  function burst(x, y, color, n = 14) {
+    for (let i = 0; i < n; i++) {
+      const an = Math.random() * 6.283, sp = 40 + Math.random() * 200;
+      parts.push({x, y, vx: Math.cos(an) * sp, vy: Math.sin(an) * sp, life: .6 + Math.random() * .4, color});
+    }
+  }
+  let overAt = 0;
+  function gameOver() {
+    state = 'over'; overAt = performance.now();
+    if (score > best) { best = score; try { localStorage.setItem('meteoros-best', best); } catch (e) {} }
+    beep(120, .6, 'sawtooth', .12);
+    if (navigator.vibrate) navigator.vibrate(200);
+  }
+
+  function setTarget(e) {
+    const r = cv.getBoundingClientRect();
+    ship.tx = Math.max(ship.r, Math.min(W - ship.r, e.clientX - r.left));
+  }
+  cv.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    if (state !== 'play') { if (state === 'menu' || performance.now() - overAt > 600) start(); return; }
+    setTarget(e);
+  });
+  cv.addEventListener('pointermove', e => { if (state === 'play') setTarget(e); });
+  addEventListener('keydown', e => {
+    if (state !== 'play') { if (e.key === ' ' || e.key === 'Enter') start(); return; }
+    if (e.key === 'ArrowLeft') ship.tx = Math.max(ship.r, ship.tx - 80);
+    if (e.key === 'ArrowRight') ship.tx = Math.min(W - ship.r, ship.tx + 80);
+  });
+
+  function update(dt) {
+    t += dt;
+    const lvl = 1 + t / 20;
+    spawnT -= dt; starT -= dt;
+    if (spawnT <= 0) {
+      const r = 14 + Math.random() * 22;
+      rocks.push({x: r + Math.random() * (W - 2 * r), y: -r, r, vy: (120 + Math.random() * 90) * Math.min(lvl, 3.2),
+        rot: 0, vr: (Math.random() - .5) * 3, seed: Math.random() * 6});
+      spawnT = Math.max(.22, .75 / Math.sqrt(lvl));
+    }
+    if (starT <= 0) {
+      gems.push({x: 20 + Math.random() * (W - 40), y: -20, r: 11, vy: 130 + Math.random() * 40});
+      starT = 1.6 + Math.random() * 1.4;
+    }
+    ship.x += (ship.tx - ship.x) * Math.min(1, dt * 14);
+
+    for (const k of rocks) {
+      k.y += k.vy * dt; k.rot += k.vr * dt;
+      if (!k.hit && Math.hypot(k.x - ship.x, k.y - ship.y) < k.r + ship.r * .7) {
+        k.hit = true; lives--; shake = .35;
+        burst(k.x, k.y, '#ff8a4c', 22); beep(160, .25, 'square', .1);
+        if (navigator.vibrate) navigator.vibrate(60);
+        if (lives <= 0) { gameOver(); }
+      }
+    }
+    for (const g of gems) {
+      g.y += g.vy * dt;
+      if (!g.got && Math.hypot(g.x - ship.x, g.y - ship.y) < g.r + ship.r) {
+        g.got = true; score += 10; burst(g.x, g.y, '#ffe066', 10); beep(880, .12, 'triangle');
+      }
+    }
+    rocks = rocks.filter(k => !k.hit && k.y < H + 60);
+    gems = gems.filter(g => !g.got && g.y < H + 40);
+    for (const p of parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; }
+    parts = parts.filter(p => p.life > 0);
+    score += dt * 2;
+    shake = Math.max(0, shake - dt);
+  }
+
+  function drawRock(k) {
+    ctx.save(); ctx.translate(k.x, k.y); ctx.rotate(k.rot);
+    ctx.beginPath();
+    const n = 9;
+    for (let i = 0; i < n; i++) {
+      const a = i / n * 6.283, rr = k.r * (.8 + .2 * Math.sin(i * 12.9 + k.seed));
+      ctx[i ? 'lineTo' : 'moveTo'](Math.cos(a) * rr, Math.sin(a) * rr);
+    }
+    ctx.closePath(); ctx.fillStyle = '#7a6f66'; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = '#a89b90'; ctx.stroke();
+    ctx.fillStyle = 'rgba(0,0,0,.25)';
+    ctx.beginPath(); ctx.arc(-k.r * .25, -k.r * .15, k.r * .22, 0, 6.283); ctx.fill();
+    ctx.beginPath(); ctx.arc(k.r * .3, k.r * .25, k.r * .15, 0, 6.283); ctx.fill();
+    ctx.restore();
+  }
+  function drawStar(x, y, r, rot) {
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = rot + i * Math.PI / 5 - Math.PI / 2, rr = i % 2 ? r * .45 : r;
+      ctx[i ? 'lineTo' : 'moveTo'](x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+    }
+    ctx.closePath(); ctx.fillStyle = '#ffe066'; ctx.fill();
+  }
+  function drawShip() {
+    const {x, y} = ship;
+    ctx.save(); ctx.translate(x, y);
+    const flame = 8 + Math.random() * 8;
+    ctx.fillStyle = '#ff9f43';
+    ctx.beginPath(); ctx.moveTo(-6, 12); ctx.lineTo(0, 12 + flame); ctx.lineTo(6, 12); ctx.fill();
+    ctx.fillStyle = '#4cc9f0';
+    ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(16, 14); ctx.lineTo(0, 7); ctx.lineTo(-16, 14); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#e0f7ff';
+    ctx.beginPath(); ctx.arc(0, -2, 4, 0, 6.283); ctx.fill();
+    ctx.restore();
+  }
+  function text(s, x, y, size, color = '#fff', align = 'center', weight = 'bold') {
+    ctx.font = `${weight} ${size}px system-ui,sans-serif`;
+    ctx.textAlign = align; ctx.fillStyle = color; ctx.fillText(s, x, y);
+  }
+
+  function draw() {
+    ctx.save();
+    if (shake > 0) ctx.translate((Math.random() - .5) * 10, (Math.random() - .5) * 10);
+    const grd = ctx.createLinearGradient(0, 0, 0, H);
+    grd.addColorStop(0, '#0b1026'); grd.addColorStop(1, '#1d2a5b');
+    ctx.fillStyle = grd; ctx.fillRect(-10, -10, W + 20, H + 20);
+    for (const s of stars) {
+      const y = (s.y * H + performance.now() * .02 * s.s) % H;
+      ctx.fillStyle = `rgba(255,255,255,${.3 + s.s * .25})`;
+      ctx.fillRect(s.x * W, y, s.s, s.s);
+    }
+    if (state !== 'menu') {
+      rocks.forEach(drawRock);
+      gems.forEach(g => drawStar(g.x, g.y, g.r, performance.now() / 400));
+      for (const p of parts) {
+        ctx.globalAlpha = Math.max(0, p.life * 1.5); ctx.fillStyle = p.color; ctx.fillRect(p.x, p.y, 3, 3);
+      }
+      ctx.globalAlpha = 1;
+      if (state === 'play') drawShip();
+      const top = 40;
+      text(String(Math.floor(score)), 20, top, 30, '#fff', 'left');
+      text('♥'.repeat(Math.max(0, lives)), W - 20, top, 28, '#ff5d73', 'right');
+    }
+    if (state === 'menu') {
+      text('CHUVA DE', W / 2, H * .30, Math.min(44, W / 9));
+      text('METEOROS', W / 2, H * .30 + Math.min(52, W / 8), Math.min(52, W / 8), '#4cc9f0');
+      text('Arraste o dedo para mover a nave', W / 2, H * .55, 17, '#cfd8ff', 'center', 'normal');
+      text('Desvie das pedras e pegue as estrelas ★', W / 2, H * .55 + 28, 17, '#cfd8ff', 'center', 'normal');
+      text('Toque para jogar', W / 2, H * .75, 26, '#ffe066');
+      if (best) text('Recorde: ' + Math.floor(best), W / 2, H * .75 + 36, 18, '#cfd8ff', 'center', 'normal');
+      ship.x = W / 2 + Math.sin(performance.now() / 600) * 40; ship.y = H * .88; drawShip();
+    }
+    if (state === 'over') {
+      ctx.fillStyle = 'rgba(5,8,25,.65)'; ctx.fillRect(0, 0, W, H);
+      text('FIM DE JOGO', W / 2, H * .34, Math.min(44, W / 9), '#ff5d73');
+      text('Pontos: ' + Math.floor(score), W / 2, H * .34 + 56, 28);
+      text('Recorde: ' + Math.floor(best), W / 2, H * .34 + 92, 22, '#ffe066');
+      text('Toque para jogar de novo', W / 2, H * .62, 24, '#4cc9f0');
+    }
+    ctx.restore();
+  }
+
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min(.05, (now - last) / 1000); last = now;
+    if (state === 'play') update(dt);
+    else for (const p of parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; }
+    draw();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  window.__game = {get state() { return state; }, get score() { return score; }, get lives() { return lives; }};
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+})();
+</script>
+</body>
+</html>
