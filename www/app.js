@@ -45,7 +45,8 @@
   function header() {
     $('s-cash').textContent = M(s.cash); $('s-cash').className = s.cash < 0 ? 'neg' : '';
     const d = $('s-delta');
-    if (s.report) { d.textContent = sign(s.report.net) + ' por mês'; d.className = cls(s.report.net); } else d.textContent = '';
+    if (s.cash < 0) { d.textContent = 'No vermelho! Limite ' + M(-Sim.OVERDRAFT_LIMIT); d.className = 'neg'; }
+    else if (s.report) { d.textContent = sign(s.report.net) + ' por mês'; d.className = cls(s.report.net); } else d.textContent = '';
     $('s-pop').textContent = Math.floor(s.pop).toLocaleString('pt-BR');
     $('s-face').textContent = face(s.happy);
   }

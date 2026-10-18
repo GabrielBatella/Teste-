@@ -127,19 +127,19 @@ test('construir e demolir sem escolher terreno', () => {
   assert.equal(Sim.buildAny(s, 'casa').ok, false);
 });
 
-test('dificuldade: parado não quebra, ingênuo corre risco', () => {
-  let parado = 0, ingenuo = 0;
+test('dificuldade: parado não quebra, ingênuo costuma ficar no vermelho', () => {
+  let parado = 0, vermelho = 0;
   for (let k = 1; k <= 60; k++) {
     const a = Sim.newGame(k * 31); run(a, 60); if (a.over) parado++;
-    const b = Sim.newGame(k * 31);
+    const b = Sim.newGame(k * 31); let neg = false;
     for (let m = 0; m < 60 && !b.over; m++) {
       for (const t of ['fabrica', 'predio', 'casa']) Sim.buildAny(b, t);
-      Sim.step(b);
+      Sim.step(b); if (b.cash < 0) neg = true;
     }
-    if (b.over) ingenuo++;
+    if (neg) vermelho++;
   }
   assert.equal(parado, 0, 'ficar parado não deve quebrar a cidade');
-  assert.ok(ingenuo >= 10, 'gastar sem planejar deve quebrar com frequência: ' + ingenuo);
+  assert.ok(vermelho >= 10, 'gastar sem planejar deve deixar o caixa negativo com frequência: ' + vermelho);
 });
 
 // ---------- Equipe ----------
@@ -352,4 +352,17 @@ test('jogo salvo sem nível ganha nível 1', () => {
   const s = rica(26); Sim.hire(s, 'gerente'); delete s.staff.gerente.level;
   const t = Sim.load(JSON.stringify(s));
   assert.equal(Sim.levelOf(t, 'gerente'), 1);
+});
+
+test('falência só passa de -R$ 15 mil no caixa', () => {
+  assert.equal(Sim.OVERDRAFT_LIMIT, 15000);
+  const a = Sim.newGame(30); a.cash = -7000;
+  Sim.step(a);
+  assert.equal(a.over, null, 'dever 7 mil não quebra');
+  const b = Sim.newGame(30); b.cash = -14000;
+  Sim.step(b);
+  assert.equal(b.over, null, 'dever 14 mil ainda não quebra');
+  const c = Sim.newGame(30); c.cash = -16000;
+  Sim.step(c);
+  assert.equal(c.over && c.over.title, 'Falência!');
 });

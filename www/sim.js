@@ -5,7 +5,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   const COLS = 6, ROWS = 7, HALL = 3 * COLS + 2;
   const BASIC_COST = 1.5;
-  const OVERDRAFT_LIMIT = 5000, LOAN_LIMIT = 30000, LOAN_RATE = 0.015, OVERDRAFT_RATE = 0.03, FEE = 0.003;
+  const OVERDRAFT_LIMIT = 15000, LOAN_LIMIT = 30000, LOAN_RATE = 0.015, OVERDRAFT_RATE = 0.03, FEE = 0.003;
 
   const BUILDINGS = {
     casa:     {name: 'Casa',        icon: '🏠', cost: 800,  upkeep: 8,   housing: 12, kind: 'Privado',  desc: 'Abriga 12 moradores. Você recebe aluguel.'},
