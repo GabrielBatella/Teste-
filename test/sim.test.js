@@ -234,8 +234,13 @@ test('conselho do analista e lista de necessidades', () => {
   for (let i = 0; i < 12; i++) Sim.step(s);
   ['poupanca', 'cdb', 'fii', 'acoes', 'cripto'].forEach(k => {
     const a = Sim.advice(s, k);
-    assert.ok(a.icon && a.text);
+    assert.ok(a === null || (a.icon && a.text));
   });
+  assert.equal(Sim.advice(s, 'cdb'), null, 'ativo seguro não precisa de conselho');
+  s.assets.acoes.hist = [100, 100, 100, 100, 100, 100, 60];
+  assert.ok(Sim.advice(s, 'acoes').text.includes('barato'));
+  s.assets.acoes.hist = [100, 100, 100, 100, 100, 100, 150];
+  assert.ok(Sim.advice(s, 'acoes').text.includes('caro'));
   const need = Sim.needs(s);
   assert.ok(Array.isArray(need) && need.every(x => x.key && x.n > 0));
 });
@@ -250,4 +255,25 @@ test('aviso quando um funcionário é liberado', () => {
   const s = Sim.newGame(8); s.pop = 90;
   Sim.step(s);
   assert.ok(s.log.some(l => l.includes('Agora você pode contratar')));
+});
+
+test('dica só descreve o problema e é ocasional', () => {
+  const s = Sim.newGame(1);
+  assert.equal(Sim.hint(s, Sim.analyze(s)), null, 'cidade inicial não precisa de dica');
+  s.cash = -50;
+  const h = Sim.hint(s, Sim.analyze(s));
+  assert.equal(h.id, 'cash');
+  assert.ok(!/construa|invista|contrate/i.test(h.text), 'não deve dar a solução');
+  let shown = 0, total = 0;
+  for (let k = 1; k <= 20; k++) {
+    const g = Sim.newGame(k * 13);
+    for (let m = 0; m < 48 && !g.over; m++) {
+      const rec = Sim.recommend(g, Sim.analyze(g));
+      if (rec && g.cash > Sim.BUILDINGS[rec].cost + 2000) Sim.buildAny(g, rec);
+      Sim.step(g); total++;
+      if (Sim.hint(g, Sim.analyze(g))) shown++;
+    }
+  }
+  const frac = shown / total;
+  assert.ok(frac > 0.2 && frac < 0.7, 'frequência da dica: ' + frac);
 });

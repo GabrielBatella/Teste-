@@ -8,11 +8,6 @@
     casa: 'Moradia', predio: 'Muita moradia', loja: 'Empregos e lucro', fabrica: 'Empregos, mas suja',
     escola: 'Educação', hospital: 'Saúde', policia: 'Segurança', parque: 'Diversão',
   };
-  const RECTEXT = {
-    loja: 'Faltam empregos! Construa uma loja.', casa: 'A cidade está cheia! Construa uma casa.',
-    escola: 'O povo quer estudar! Construa uma escola.', hospital: 'Falta saúde! Construa um hospital.',
-    policia: 'Falta segurança! Construa uma delegacia.', parque: 'Que tal um parque para o povo se divertir?',
-  };
   const RISK = {poupanca: ['🟢', 'Seguro'], cdb: ['🟢', 'Seguro'], fii: ['🟡', 'Médio'], acoes: ['🟠', 'Arriscado'], cripto: ['🔴', 'Muito arriscado']};
   const MISSIONS = {
     pop100: '👥 100 habitantes', pop500: '👥 500 habitantes', pop1500: '👥 1.500 habitantes',
@@ -55,15 +50,10 @@
     $('s-face').textContent = face(s.happy);
   }
 
-  // Dica simples para quem não quer pensar muito: [ícone, texto, construção recomendada]
+  // Dica ocasional: descreve o problema, a solução é com você
   function tip(a) {
-    const pop = s.pop;
-    if (s.cash < -1000) return ['🚨', 'Você está no vermelho! Venda um investimento ou aumente o imposto.'];
-    if (s.cash < 800) return ['⏳', 'Pouco dinheiro. Espere o dinheiro entrar!'];
-    const k = Sim.recommend(s, a);
-    if (k) return [Sim.BUILDINGS[k].icon, RECTEXT[k], k];
-    if (s.cash > 6000) return ['💰', 'Sobrou dinheiro! Invista na aba 💰 para ele render.'];
-    return ['😎', 'Tudo certo! Relaxe e veja a cidade crescer.'];
+    const h = Sim.hint(s, a);
+    return h ? [h.icon, h.text] : null;
   }
 
   const GROUPS = [
@@ -72,20 +62,20 @@
     ['❤️ Cuidar do povo', ['escola', 'hospital', 'policia', 'parque']],
   ];
 
-  function buildCard(k, c, want) {
+  function buildCard(k, c) {
     const b = Sim.BUILDINGS[k], n = c[k] || 0;
-    return `<div class="card asset ${want === k ? 'want' : ''}"><div class="top"><span class="ico">${b.icon}</span>
+    return `<div class="card asset "><div class="top"><span class="ico">${b.icon}</span>
       <div class="nm">${b.name}<small>${TAGS[k]}</small></div>
       <div class="val">${n}<small>você tem</small></div></div>
       <div class="btns"><button class="btn" data-build="${k}" ${s.cash < b.cost ? 'disabled' : ''}>Construir ${M(b.cost)}</button>
       <button class="btn sec" data-demo="${k}" ${n ? '' : 'disabled'}>Demolir</button></div>
-      ${want === k ? '<div class="rec">👆 Boa ideia agora!</div>' : ''}</div>`;
+      </div>`;
   }
 
   function viewCity() {
     const a = Sim.analyze(s), t = tip(a), c = a.c;
     const sky = ['🏛️'].concat(s.tiles.filter(k => k && k !== 'prefeitura').sort().map(k => Sim.BUILDINGS[k].icon)).join('');
-    const groups = GROUPS.map(([title, keys]) => `<h4>${title}</h4><div class="assets">${keys.map(k => buildCard(k, c, t[2])).join('')}</div>`).join('');
+    const groups = GROUPS.map(([title, keys]) => `<h4>${title}</h4><div class="assets">${keys.map(k => buildCard(k, c)).join('')}</div>`).join('');
     const need = Sim.needs(s);
     const planner = Sim.hired(s, 'planejador')
       ? `<div class="card staffnote"><h3>🏗️ Planejador Urbano</h3>${need.length
@@ -93,7 +83,7 @@
           : 'A cidade está bem atendida. 👍'}<div class="mut" style="margin-top:4px">${Sim.active(s, 'planejador') ? 'Ele constrói sozinho quando sobra dinheiro.' : 'Decisões automáticas desligadas.'}</div></div>`
       : Sim.isUnlocked(s, 'planejador') ? `<div class="card staffnote">🏗️ Você já pode contratar um <b>Planejador Urbano</b> na aba 👔 Equipe.</div>` : '';
     return `<div class="cityview"><div class="side">
-      <div class="tip"><span class="ico">${t[0]}</span><span>${t[1]}</span></div>
+      ${t ? `<div class="tip"><span class="ico">${t[0]}</span><span>${t[1]}</span></div>` : '<div class="quiet">📰 Nenhuma reclamação por enquanto.</div>'}
       ${planner}
       <div class="card"><h3>🏙️ Sua cidade</h3><div class="sky">${sky}</div></div>
       <div class="minis">

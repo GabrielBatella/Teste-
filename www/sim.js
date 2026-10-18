@@ -115,6 +115,18 @@
     if (pop > 40 && a.cov.park < 0.4) return 'parque';
     return null;
   }
+  // Dica ocasional: só descreve o PROBLEMA (nunca a solução) e só quando está sério.
+  function hint(s, a) {
+    const pop = s.pop;
+    if (s.cash < 0) return {id: 'cash', icon: '🚨', text: 'O caixa da prefeitura está no vermelho.'};
+    if (a.empRate < 0.6) return {id: 'jobs', icon: '😟', text: 'Tem muita gente sem trabalho na cidade.'};
+    if (pop >= a.housing && pop > 30) return {id: 'house', icon: '🧳', text: 'Chegou gente nova, mas não há onde morar.'};
+    if (pop > 60 && a.cov.edu < 0.3) return {id: 'edu', icon: '📚', text: 'Os pais reclamam da falta de ensino.'};
+    if (pop > 80 && a.cov.health < 0.3) return {id: 'health', icon: '🤒', text: 'Filas enormes para ser atendido.'};
+    if (pop > 80 && a.cov.safety < 0.3) return {id: 'safety', icon: '🌙', text: 'Os moradores têm medo de sair à noite.'};
+    if (pop > 100 && a.cov.park < 0.2) return {id: 'park', icon: '🧒', text: 'As crianças não têm onde brincar.'};
+    return null;
+  }
   // Quantas construções faltam para atender bem o público
   function needs(s) {
     const a = analyze(s), c = a.c, out = [];
@@ -127,17 +139,16 @@
     });
     return out;
   }
-  // Opinião do analista sobre um investimento
+  // Opinião do analista: só fala quando o sinal é forte (senão, devolve null)
   function advice(s, key) {
     const d = ASSETS.find(x => x.key === key), h = s.assets[key].hist;
-    if (d.vol <= 0.002) return {icon: '✅', text: 'Seguro. Bom para guardar dinheiro.'};
-    if (h.length < 6) return {icon: '⏳', text: 'Ainda coletando dados…'};
+    if (d.vol <= 0.002 || h.length < 6) return null;
     const n = Math.min(12, h.length), recent = h.slice(-n);
     const base = recent.reduce((t, x) => t + x, 0) / n;
-    const r = h[h.length - 1] / (base * Math.pow(1 + d.drift, (n - 1) / 2)) - 1, lim = Math.max(0.04, d.vol);
+    const r = h[h.length - 1] / (base * Math.pow(1 + d.drift, (n - 1) / 2)) - 1, lim = Math.max(0.04, d.vol * 1.3);
     if (r < -lim) return {icon: '✅', text: 'Está barato agora. Boa hora de comprar.'};
     if (r > lim) return {icon: '⚠️', text: 'Está caro agora. Melhor esperar ou vender um pouco.'};
-    return {icon: '😐', text: 'Preço normal. Pode segurar.'};
+    return null;
   }
   const reserve = (s, a) => 1500 + (a.upkeep + s.pop * BASIC_COST + staffCost(s)) * 3;
 
@@ -401,6 +412,6 @@
   }
 
   return {COLS, ROWS, HALL, BUILDINGS, ASSETS, GOALS, STAFF, SALARY_ORDER, hired, active, isUnlocked, staffCost, loanRate, hire, fire, setAuto,
-    recommend, needs, advice, LOAN_LIMIT, OVERDRAFT_LIMIT, newGame, analyze, build, buildAny, demolish, demolishOne, counts, buy, sell,
+    recommend, needs, advice, hint, LOAN_LIMIT, OVERDRAFT_LIMIT, newGame, analyze, build, buildAny, demolish, demolishOne, counts, buy, sell,
     borrow, repay, setTax, step, netWorth, holdingsValue, money, serialize, load};
 });
