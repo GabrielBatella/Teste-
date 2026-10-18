@@ -27,7 +27,6 @@ jobs:
       - name: Criar projeto Android
         run: |
           npx cap add android
-          sed -i 's|<activity|<activity android:screenOrientation="portrait"|' android/app/src/main/AndroidManifest.xml
           npx cap sync android
       - name: Compilar APK
         working-directory: android

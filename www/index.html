@@ -10,23 +10,19 @@
 <body>
 <div id="app">
   <header>
-    <div class="stats">
-      <div><small>Caixa</small><b id="s-cash">-</b></div>
-      <div><small>Data</small><b id="s-date">-</b></div>
-      <div><small>Habitantes</small><b id="s-pop">-</b></div>
-      <div><small>Felicidade</small><b id="s-happy">-</b></div>
-    </div>
+    <div class="money"><span class="ico">💰</span><div><b id="s-cash">-</b><small id="s-delta"></small></div></div>
+    <div class="pop"><span class="ico">👥</span><b id="s-pop">-</b></div>
+    <div class="face" id="s-face">🙂</div>
     <div class="speed" id="speed">
-      <button data-speed="0">⏸</button><button data-speed="1">▶</button><button data-speed="2">⏩</button><button data-speed="3">⏭</button>
-      <span id="s-net"></span>
+      <button data-speed="0" aria-label="Pausar">⏸</button><button data-speed="1" aria-label="Jogar">▶</button><button data-speed="2" aria-label="Rápido">⏩</button>
     </div>
   </header>
   <main id="view"></main>
   <nav id="tabs">
     <button data-tab="city">🏙️<span>Cidade</span></button>
-    <button data-tab="invest">📈<span>Investir</span></button>
-    <button data-tab="fin">🏦<span>Finanças</span></button>
-    <button data-tab="news">📰<span>Notícias</span></button>
+    <button data-tab="invest">💰<span>Investir</span></button>
+    <button data-tab="fin">🏦<span>Banco</span></button>
+    <button data-tab="news">⭐<span>Missões</span></button>
   </nav>
 </div>
 <div id="sheet" class="hidden"></div>
