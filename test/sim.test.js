@@ -141,3 +141,113 @@ test('dificuldade: parado não quebra, ingênuo corre risco', () => {
   assert.equal(parado, 0, 'ficar parado não deve quebrar a cidade');
   assert.ok(ingenuo >= 10, 'gastar sem planejar deve quebrar com frequência: ' + ingenuo);
 });
+
+// ---------- Equipe ----------
+const rica = seed => { const s = Sim.newGame(seed); s.pop = 120; s.cash = 40000; return s; };
+
+test('funcionário só pode ser contratado depois de liberado', () => {
+  const s = Sim.newGame(1);
+  assert.equal(Sim.isUnlocked(s, 'planejador'), false);
+  assert.equal(Sim.hire(s, 'planejador').ok, false);
+  s.pop = 60;
+  assert.ok(Sim.hire(s, 'planejador').ok);
+  assert.equal(Sim.hire(s, 'planejador').ok, false);
+  assert.equal(Sim.hire(s, 'xyz').ok, false);
+});
+
+test('salário entra nas despesas e some ao demitir', () => {
+  const s = rica(1);
+  Sim.hire(s, 'planejador'); Sim.hire(s, 'gerente');
+  assert.equal(Sim.staffCost(s), 190);
+  Sim.step(s);
+  assert.equal(s.report.salaries, 190);
+  Sim.fire(s, 'planejador'); Sim.fire(s, 'gerente');
+  Sim.step(s);
+  assert.equal(s.report.salaries, 0);
+});
+
+test('gerente reduz os juros e paga dívida quando sobra dinheiro', () => {
+  const s = rica(2);
+  Sim.borrow(s, 10000);
+  Sim.hire(s, 'gerente');
+  assert.equal(Sim.loanRate(s), 0.01);
+  const antes = s.debt;
+  Sim.step(s);
+  assert.ok(s.debt < antes, 'deveria amortizar');
+  assert.ok(s.log.some(l => l.includes('Gerente pagou')));
+});
+
+test('gerente pede empréstimo em vez de deixar o caixa ficar negativo', () => {
+  const s = rica(3);
+  assert.ok(Sim.hire(s, 'gerente').ok);
+  s.cash = -1500;
+  Sim.step(s);
+  assert.ok(s.cash >= 0, 'caixa: ' + s.cash);
+  assert.ok(s.debt > 0);
+});
+
+test('gerente desligado não decide nada', () => {
+  const s = rica(3);
+  assert.ok(Sim.hire(s, 'gerente').ok); Sim.setAuto(s, 'gerente', false);
+  s.cash = -1500;
+  Sim.step(s);
+  assert.equal(s.debt, 0);
+});
+
+test('analista aplica a sobra em renda fixa e não cobra corretagem', () => {
+  const s = rica(4);
+  Sim.hire(s, 'analista');
+  Sim.step(s);
+  assert.ok(s.assets.cdb.units > 0, 'deveria investir');
+  const antes = s.cash;
+  Sim.buy(s, 'acoes', 1000);
+  assert.ok(Math.abs(s.assets.acoes.units * s.assets.acoes.price - 1000) < 1e-6, 'sem taxa');
+  assert.equal(s.cash, antes - 1000);
+});
+
+test('analista vende ativo que caiu mais de 25%', () => {
+  const s = rica(5);
+  Sim.buy(s, 'acoes', 5000);
+  s.assets.acoes.price *= 0.6;
+  Sim.hire(s, 'analista');
+  Sim.step(s);
+  assert.equal(s.assets.acoes.units, 0);
+  assert.ok(s.log.some(l => l.includes('Analista vendeu')));
+});
+
+test('planejador constrói o que falta, com desconto', () => {
+  const s = rica(6);
+  s.pop = 59; // fica abaixo da capacidade de moradia, mas sem empregos
+  for (let i = 0; i < 6; i++) Sim.buildAny(s, 'casa');
+  Sim.hire(s, 'planejador');
+  const a = Sim.analyze(s);
+  const k = Sim.recommend(s, a);
+  assert.ok(k, 'deveria haver uma recomendação');
+  const n = Sim.counts(s)[k] || 0;
+  Sim.step(s);
+  assert.equal(Sim.counts(s)[k], n + 1);
+  assert.ok(s.log.some(l => l.includes('Planejador construiu')));
+});
+
+test('conselho do analista e lista de necessidades', () => {
+  const s = rica(7);
+  for (let i = 0; i < 12; i++) Sim.step(s);
+  ['poupanca', 'cdb', 'fii', 'acoes', 'cripto'].forEach(k => {
+    const a = Sim.advice(s, k);
+    assert.ok(a.icon && a.text);
+  });
+  const need = Sim.needs(s);
+  assert.ok(Array.isArray(need) && need.every(x => x.key && x.n > 0));
+});
+
+test('jogo salvo antigo ganha a equipe ao carregar', () => {
+  const s = Sim.newGame(1); delete s.staff; delete s.staffSeen;
+  const t = Sim.load(JSON.stringify(s));
+  assert.ok(t.staff.planejador && !t.staff.planejador.hired);
+});
+
+test('aviso quando um funcionário é liberado', () => {
+  const s = Sim.newGame(8); s.pop = 90;
+  Sim.step(s);
+  assert.ok(s.log.some(l => l.includes('Agora você pode contratar')));
+});
