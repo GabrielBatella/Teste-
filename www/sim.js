@@ -4,6 +4,7 @@
   else root.Sim = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   const COLS = 6, ROWS = 7, HALL = 3 * COLS + 2;
+  const BASIC_COST = 1.5;
   const OVERDRAFT_LIMIT = 5000, LOAN_LIMIT = 30000, LOAN_RATE = 0.015, OVERDRAFT_RATE = 0.03, FEE = 0.003;
 
   const BUILDINGS = {
@@ -56,10 +57,10 @@
     const assets = {};
     ASSETS.forEach(a => { assets[a.key] = {price: 100, units: 0, spent: 0, hist: [100]}; });
     return {
-      v: 1, seed: seed == null ? (Date.now() | 0) : seed, month: 0, cash: 15000, debt: 0, taxRate: 10,
+      v: 1, seed: seed == null ? (Date.now() | 0) : seed, month: 0, cash: 10000, debt: 0, taxRate: 10,
       tiles, pop: 20, happy: 55, assets, mods: {econ: 1, econLeft: 0, upkeep: 1, upkeepLeft: 0},
       log: ['Bem-vindo, prefeito! Cuide da cidade e faça o dinheiro render.'],
-      report: null, over: null, lowHappy: 0, goals: {}, netHist: [15000 + 0],
+      report: null, over: null, lowHappy: 0, goals: {}, netHist: [10000],
     };
   }
 
@@ -119,6 +120,19 @@
     return {ok: true};
   }
 
+  // Constrói no primeiro terreno livre (a interface não precisa escolher o lugar).
+  function buildAny(s, type) {
+    const idx = s.tiles.findIndex(t => !t);
+    if (idx < 0) return {ok: false, msg: 'Sem terreno livre!'};
+    return build(s, idx, type);
+  }
+  // Demole a construção mais recente desse tipo.
+  function demolishOne(s, type) {
+    const idx = s.tiles.lastIndexOf(type);
+    if (idx < 0) return {ok: false, msg: 'Você não tem essa construção.'};
+    return demolish(s, idx);
+  }
+
   function buy(s, key, amount) {
     const a = s.assets[key];
     if (s.over || !a || !(amount > 0)) return {ok: false, msg: 'Valor inválido.'};
@@ -157,9 +171,9 @@
 
   const EVENTS = [
     {w: 3, run(s) {
-      const d = 1000 + Math.round(mulberry(s) * 1500); s.cash -= d; note(s, `🌊 Enchente! Reparos custaram ${money(d)}.`);
+      const d = 1500 + Math.round(mulberry(s) * 2500); s.cash -= d; note(s, `🌊 Enchente! Reparos custaram ${money(d)}.`);
     }},
-    {w: 3, run(s) {
+    {w: 2, run(s) {
       const g = 400 + Math.round(mulberry(s) * 800); s.cash += g; note(s, `🎉 Festival na cidade! Turismo rendeu ${money(g)}.`);
     }},
     {w: 2, run(s) {
@@ -186,16 +200,17 @@
     const upk = s.mods.upkeepLeft > 0 ? s.mods.upkeep : 1;
 
     const taxes = a.employed * 8 * (s.taxRate / 10);
-    const rent = Math.min(s.pop, a.housing) * 6;
+    const rent = Math.min(s.pop, a.housing) * 5;
     const consumption = a.employed * 12;
     const shops = (a.c.loja || 0) * 300;
-    const commerce = Math.min(consumption, shops) * 0.25 * econ;
-    const industry = (a.c.fabrica || 0) * 180 * Math.min(1, a.workers / Math.max(1, a.jobs)) * econ;
+    const commerce = Math.min(consumption, shops) * 0.22 * econ;
+    const industry = (a.c.fabrica || 0) * 160 * Math.min(1, a.workers / Math.max(1, a.jobs)) * econ;
     const income = taxes + rent + commerce + industry;
     const maint = a.upkeep * upk;
     const interest = s.debt * LOAN_RATE;
     const overdraft = s.cash < 0 ? -s.cash * OVERDRAFT_RATE : 0;
-    const expenses = maint + interest + overdraft;
+    const basic = s.pop * BASIC_COST;
+    const expenses = maint + basic + interest + overdraft;
     s.cash += income - expenses;
 
     // População
@@ -217,7 +232,7 @@
     if (s.mods.upkeepLeft > 0) s.mods.upkeepLeft--;
 
     // Eventos aleatórios
-    if (mulberry(s) < 0.12) {
+    if (mulberry(s) < 0.17) {
       let r = mulberry(s) * EVENTS.reduce((t, e) => t + e.w, 0);
       for (const e of EVENTS) { if ((r -= e.w) < 0) { e.run(s); break; } }
     }
@@ -235,7 +250,7 @@
       }
     }
 
-    s.report = {taxes, rent, commerce, industry, income, maint, interest, overdraft, expenses, net: income - expenses};
+    s.report = {taxes, rent, commerce, industry, income, maint, basic, interest, overdraft, expenses, net: income - expenses};
     s.netHist.push(netWorth(s)); if (s.netHist.length > 48) s.netHist.shift();
 
     GOALS.forEach(g => { if (!s.goals[g.id] && g.test(s)) { s.goals[g.id] = s.month; note(s, `🏆 Meta cumprida: ${g.text}!`); } });
@@ -261,6 +276,6 @@
     } catch (e) { return null; }
   }
 
-  return {COLS, ROWS, HALL, BUILDINGS, ASSETS, GOALS, LOAN_LIMIT, OVERDRAFT_LIMIT, newGame, analyze, build, demolish, buy, sell,
+  return {COLS, ROWS, HALL, BUILDINGS, ASSETS, GOALS, LOAN_LIMIT, OVERDRAFT_LIMIT, newGame, analyze, build, buildAny, demolish, demolishOne, counts, buy, sell,
     borrow, repay, setTax, step, netWorth, holdingsValue, money, serialize, load};
 });

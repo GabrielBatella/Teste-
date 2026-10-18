@@ -7,7 +7,7 @@ const run = (s, n) => { for (let i = 0; i < n && !s.over; i++) Sim.step(s); retu
 test('jogo novo começa saudável', () => {
   const s = Sim.newGame(1);
   assert.equal(s.tiles[Sim.HALL], 'prefeitura');
-  assert.equal(s.cash, 15000);
+  assert.equal(s.cash, 10000);
   const a = Sim.analyze(s);
   assert.ok(a.housing > 0 && a.jobs > 0);
 });
@@ -15,7 +15,7 @@ test('jogo novo começa saudável', () => {
 test('construir desconta o custo e ocupa o terreno', () => {
   const s = Sim.newGame(1);
   assert.ok(Sim.build(s, 0, 'casa').ok);
-  assert.equal(s.cash, 15000 - Sim.BUILDINGS.casa.cost);
+  assert.equal(s.cash, 10000 - Sim.BUILDINGS.casa.cost);
   assert.equal(s.tiles[0], 'casa');
   assert.equal(Sim.build(s, 0, 'casa').ok, false);
   assert.equal(Sim.build(s, 1, 'xyz').ok, false);
@@ -51,12 +51,12 @@ test('cidade bem administrada cresce e dá lucro', () => {
 test('compra e venda de ativos', () => {
   const s = Sim.newGame(3);
   assert.ok(Sim.buy(s, 'acoes', 1000).ok);
-  assert.equal(s.cash, 14000);
+  assert.equal(s.cash, 9000);
   const v = Sim.holdingsValue(s);
   assert.ok(v < 1000 && v > 990, 'taxa de corretagem aplicada');
   assert.ok(Sim.sell(s, 'acoes', 'all').ok);
   assert.equal(s.assets.acoes.units, 0);
-  assert.ok(s.cash > 14990 && s.cash < 15000, "perde só as taxas: " + s.cash);
+  assert.ok(s.cash > 9990 && s.cash < 10000, "perde só as taxas: " + s.cash);
   assert.equal(Sim.sell(s, 'acoes', 'all').ok, false);
   assert.equal(Sim.buy(s, 'acoes', 999999).ok, false);
 });
@@ -113,4 +113,31 @@ test('imposto alto reduz felicidade', () => {
   assert.ok(Sim.analyze(s).happy < base);
   Sim.setTax(s, 99);
   assert.equal(s.taxRate, 20);
+});
+
+test('construir e demolir sem escolher terreno', () => {
+  const s = Sim.newGame(1);
+  const antes = Sim.counts(s).casa;
+  assert.ok(Sim.buildAny(s, 'casa').ok);
+  assert.equal(Sim.counts(s).casa, antes + 1);
+  assert.ok(Sim.demolishOne(s, 'casa').ok);
+  assert.equal(Sim.counts(s).casa, antes);
+  assert.equal(Sim.demolishOne(s, 'hospital').ok, false);
+  s.tiles.fill('casa'); s.cash = 99999;
+  assert.equal(Sim.buildAny(s, 'casa').ok, false);
+});
+
+test('dificuldade: parado não quebra, ingênuo corre risco', () => {
+  let parado = 0, ingenuo = 0;
+  for (let k = 1; k <= 60; k++) {
+    const a = Sim.newGame(k * 31); run(a, 60); if (a.over) parado++;
+    const b = Sim.newGame(k * 31);
+    for (let m = 0; m < 60 && !b.over; m++) {
+      for (const t of ['fabrica', 'predio', 'casa']) Sim.buildAny(b, t);
+      Sim.step(b);
+    }
+    if (b.over) ingenuo++;
+  }
+  assert.equal(parado, 0, 'ficar parado não deve quebrar a cidade');
+  assert.ok(ingenuo >= 10, 'gastar sem planejar deve quebrar com frequência: ' + ingenuo);
 });
