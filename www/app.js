@@ -7,12 +7,17 @@
   const TAGS = {
     casa: 'Moradia', predio: 'Muita moradia', loja: 'Empregos e lucro', fabrica: 'Empregos, mas suja',
     escola: 'Educação', hospital: 'Saúde', policia: 'Segurança', parque: 'Diversão',
+    condominio: 'Moradores ricos', mercado: 'Muitos empregos e vendas', fazenda: 'Empregos, sem poluição', tecnologia: 'Lucra com educação',
+    universidade: 'Muita educação', bombeiros: 'Protege de incêndios', estadio: 'Diversão e turismo',
+    agua: 'Água para o povo', esgoto: 'Saneamento básico', solar: 'Energia limpa (pequena)', eolica: 'Energia limpa', carvao: 'Muita energia, mas polui',
+    filtro: 'Limpa o ar', floresta: 'Barato, limpa o ar', reciclagem: 'Limpa o ar e dá lucro',
   };
-  const RISK = {poupanca: ['🟢', 'Seguro'], cdb: ['🟢', 'Seguro'], fii: ['🟡', 'Médio'], acoes: ['🟠', 'Arriscado'], cripto: ['🔴', 'Muito arriscado']};
+  const RISK = {poupanca: ['🟢', 'Seguro'], cdb: ['🟢', 'Seguro'], tesouro: ['🟢', 'Seguro'], fii: ['🟡', 'Médio'], ouro: ['🟡', 'Médio'], etf: ['🟡', 'Médio'], dolar: ['🟡', 'Médio'], acoes: ['🟠', 'Arriscado'], cripto: ['🔴', 'Muito arriscado'], startup: ['🔴', 'Loteria']};
+  const ASSET_GROUPS = [['🟢 Seguros', ['poupanca', 'cdb', 'tesouro']], ['🟡 Moderados', ['fii', 'ouro', 'etf', 'dolar']], ['🔴 Arriscados', ['acoes', 'cripto', 'startup']]];
   const MISSIONS = {
     pop100: '👥 100 habitantes', pop500: '👥 500 habitantes', pop1500: '👥 1.500 habitantes',
     nw50: '💰 R$ 50 mil de patrimônio', nw200: '💰 R$ 200 mil de patrimônio', nw1m: '💎 R$ 1 milhão de patrimônio',
-    diver: '📈 Investir em 3 coisas diferentes', team: '👔 Contratar 2 funcionários', train: '🎓 Treinar um funcionário até o nível 3', happy80: '😄 Deixar todo mundo muito feliz',
+    diver: '📈 Investir em 3 coisas diferentes', team: '👔 Contratar 2 funcionários', clean: '🌿 Ar limpo com 300 habitantes', train: '🎓 Treinar um funcionário até o nível 3', happy80: '😄 Deixar todo mundo muito feliz',
   };
 
   function save() { try { localStorage.setItem(SAVE, Sim.serialize(s)); } catch (e) {} }
@@ -58,9 +63,11 @@
   }
 
   const GROUPS = [
-    ['🏠 Morar', ['casa', 'predio']],
-    ['💼 Trabalhar', ['loja', 'fabrica']],
-    ['❤️ Cuidar do povo', ['escola', 'hospital', 'policia', 'parque']],
+    ['🏠 Morar', ['casa', 'predio', 'condominio']],
+    ['💼 Trabalhar', ['loja', 'mercado', 'fazenda', 'fabrica', 'tecnologia']],
+    ['❤️ Cuidar do povo', ['escola', 'universidade', 'hospital', 'policia', 'bombeiros', 'parque', 'estadio']],
+    ['🔧 Água, esgoto e energia', ['agua', 'esgoto', 'solar', 'eolica', 'carvao']],
+    ['🌱 Meio ambiente', ['filtro', 'floresta', 'reciclagem']],
   ];
 
   function buildCard(k, c) {
@@ -93,12 +100,18 @@
         <div class="mini"><b>${meter(a.cov.health)}</b>🏥 Saúde</div>
         <div class="mini"><b>${meter(a.cov.safety)}</b>🚓 Seguro</div>
         <div class="mini"><b>${meter(a.cov.park)}</b>🌳 Lazer</div>
+      </div>
+      <div class="minis">
+        <div class="mini"><b>${meter(a.cov.power)}</b>⚡ Energia</div>
+        <div class="mini"><b>${meter(a.cov.water)}</b>💧 Água</div>
+        <div class="mini"><b>${meter(a.cov.sewage)}</b>🚽 Esgoto</div>
+        <div class="mini"><b>${meter(1 - Math.min(1, a.pollution / 16))}</b>🌫️ Ar limpo</div>
       </div></div><div class="builds">${groups}</div></div>`;
   }
 
   function viewInvest() {
     const chips = [500, 1000, 5000, 10000].map(v => `<button class="chip ${v === amount ? 'on' : ''}" data-amt="${v}">${M(v)}</button>`).join('');
-    const cards = Sim.ASSETS.map(d => {
+    const card = d => {
       const x = s.assets[d.key], val = x.units * x.price, pl = x.spent > 0 ? (val / x.spent - 1) * 100 : 0;
       const r = RISK[d.key], adv = Sim.hired(s, 'analista') ? Sim.advice(s, d.key) : null;
       return `<div class="card asset"><div class="top"><span class="ico">${d.icon}</span>
@@ -108,11 +121,12 @@
         <div class="btns"><button class="btn" data-buy="${d.key}" ${s.cash < amount ? 'disabled' : ''}>Comprar</button>
         <button class="btn sec" data-sell="${d.key}" ${x.units <= 0 ? 'disabled' : ''}>Vender</button>
         <button class="btn sec" data-sellall="${d.key}" ${x.units <= 0 ? 'disabled' : ''}>Tudo</button></div></div>`;
-    }).join('');
+    };
+    const cards = ASSET_GROUPS.map(([title, keys]) => `<h4 class="grp">${title}</h4><div class="assets">${keys.map(k => card(Sim.ASSETS.find(d => d.key === k))).join('')}</div>`).join('');
     const hint = !Sim.hired(s, 'analista') && Sim.isUnlocked(s, 'analista')
       ? `<div class="card staffnote">📊 Você já pode contratar um <b>Analista de Investimentos</b> na aba 👔 Equipe.</div>` : '';
     const auto = Sim.hired(s, 'analista') ? `<div class="mut" style="margin-bottom:10px">${Sim.active(s, 'analista') ? '📊 O analista aplica as sobras em Renda Fixa e vende se algo cair 25%.' : '📊 Decisões automáticas do analista desligadas.'}</div>` : '';
-    return `${hint}${auto}<div class="chips">${chips}</div><div class="assets">${cards}</div>`;
+    return `${hint}${auto}<div class="chips">${chips}</div>${cards}`;
   }
 
   function manager(a) {
@@ -165,7 +179,7 @@
         body = `<div class="eff"><div class="effhead"><span>${ef[0]} ${ef[1]}</span></div>
             <i><b style="width:${Math.round(inf.efficiency * 100)}%;background:${ef[2]}"></b></i>
             <div class="mut" style="font-size:12px">Aguenta uma cidade de até ${inf.capacity.toLocaleString('pt-BR')} habitantes (a sua tem ${Math.floor(s.pop).toLocaleString('pt-BR')}).</div></div>
-          <div class="perks">${inf.lines.map(l => `<span>${l}</span>`).join('')}</div>
+          <div class="perks">${inf.lines.map(l => `<span>${l}</span>`).join('')}<span class="warnchip">😅 Erra em ~${Math.round(inf.errorChance * 100)}% das decisões</span></div>
           <div class="btns">${train}</div>
           <div class="btns"><button class="btn ${auto ? '' : 'sec'}" data-auto="${k}">${auto ? '🤖 Decisões automáticas: LIGADAS' : '🤖 Decisões automáticas: DESLIGADAS'}</button>
           <button class="btn red" data-fire="${k}" style="flex:0 0 auto">Demitir</button></div>`;
@@ -179,11 +193,16 @@
         <div class="val">${on ? '✅' : open ? '' : '🔒'}</div></div>
         <div class="mut" style="margin-top:8px;font-size:14px">${f.desc}</div>${body}</div>`;
     }).join('');
+    const st = s.staffStats || {errors: 0, cost: 0};
+    const mine = s.log.filter(l => /🏗️|📊|🏦|😅/.test(l) && !/Agora você pode/.test(l)).slice(0, 8);
+    const logHtml = mine.length ? mine.map(l => `<div class="logline">${l}</div>`).join('') : '<div class="mut">Ainda não fizeram nada.</div>';
     return `<div class="card"><h3>👔 Folha de pagamento</h3><div class="big ${cost ? 'neg' : ''}">${cost ? '-' : ''}${M(cost)}</div>
       <div class="mut" style="text-align:center">por mês</div></div>
       <div class="mut" style="font-size:14px;margin-bottom:12px">Quanto maior a cidade, mais trabalho. Funcionário sobrecarregado rende menos: treine a equipe para acompanhar o crescimento. Treinar custa uma vez e aumenta o salário.</div>
       <div class="assets">${cards}</div>
-      <div class="mut" style="font-size:13px;margin-top:6px">Eles ajudam, mas não fazem tudo. Dá para desligar as decisões automáticas. Demitir faz perder o nível.</div>`;
+      <div class="card"><h3>📋 O que a equipe fez</h3>${logHtml}
+        <div class="mut" style="margin-top:8px">😅 Erros até agora: <b>${st.errors}</b> · custaram <b class="${st.cost ? 'neg' : ''}">${M(st.cost)}</b></div></div>
+      <div class="mut" style="font-size:13px;margin-top:6px">Eles ajudam, mas não fazem tudo e podem errar. Dá para desligar as decisões automáticas. Demitir faz perder o nível.</div>`;
   }
 
   function viewNews() {

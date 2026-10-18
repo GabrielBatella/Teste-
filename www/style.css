@@ -91,3 +91,10 @@ button.btn:disabled{opacity:.35}
 .perks{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .perks span{background:#0b121a;border-radius:20px;padding:6px 10px;font-size:13px}
 button.btn small{display:block;font-weight:400;font-size:12px;margin-top:2px}
+
+.grp{margin:16px 0 8px;font-size:17px}
+.perks .warnchip{background:#3a2a12;color:var(--warn)}
+.logline{font-size:14px;padding:6px 0;border-bottom:1px solid #223148}
+.minis+.minis{margin-top:0}
+.side .minis{flex-wrap:wrap}
+.side .minis .mini{min-width:calc(20% - 6px)}

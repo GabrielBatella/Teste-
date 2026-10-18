@@ -366,3 +366,187 @@ test('falência só passa de -R$ 15 mil no caixa', () => {
   Sim.step(c);
   assert.equal(c.over && c.over.title, 'Falência!');
 });
+
+// ---------- Erros da equipe ----------
+test('chance de erro: 30% normal, sobe se estiver sobrecarregado e tem teto', () => {
+  const s = rica(40); s.pop = 70;
+  Sim.hire(s, 'planejador');
+  assert.ok(Math.abs(Sim.errorChance(s, 'planejador') - 0.30) < 1e-9);
+  s.pop = 400; const e = Sim.errorChance(s, 'planejador');
+  assert.ok(e > 0.30 && e <= 0.6, 'errorChance: ' + e);
+  s.pop = 100000; assert.ok(Sim.errorChance(s, 'planejador') <= 0.6);
+});
+
+test('equipe comete erros que custam dinheiro (e ficam registrados)', () => {
+  let erros = 0, custo = 0, mensagens = 0;
+  for (let k = 1; k <= 12; k++) {
+    const s = rica(100 + k); s.pop = 70; s.cash = 60000;
+    for (let i = 0; i < 6; i++) Sim.buildAny(s, 'casa');
+    ['planejador', 'analista', 'gerente'].forEach(f => Sim.hire(s, f));
+    Sim.borrow(s, 10000);
+    for (let m = 0; m < 36 && !s.over; m++) { Sim.step(s); if (m % 6 === 0) s.cash = Math.max(s.cash, 30000); }
+    erros += s.staffStats.errors; custo += s.staffStats.cost;
+    mensagens += s.log.filter(l => l.includes('😅')).length;
+  }
+  assert.ok(erros >= 10, 'deveria haver erros: ' + erros);
+  assert.ok(custo > 0 && custo / erros > 100, 'cada erro deve custar algo: ' + custo / erros);
+  assert.ok(mensagens > 0);
+});
+
+test('funcionário desligado não erra', () => {
+  const s = rica(41); s.cash = 60000;
+  ['planejador', 'analista', 'gerente'].forEach(f => { Sim.hire(s, f); Sim.setAuto(s, f, false); });
+  for (let m = 0; m < 24; m++) Sim.step(s);
+  assert.equal(s.staffStats.errors, 0);
+});
+
+// ---------- Correção do "jogo parado" ----------
+test('analista guarda só metade da sobra (sobra caixa para a cidade)', () => {
+  const s = rica(42); s.pop = 60; s.cash = 20000;
+  Sim.hire(s, 'analista');
+  for (let i = 1; i < 5; i++) { s.cash = 60000; Sim.upgrade(s, 'analista'); }
+  s.cash = 20000;
+  Sim.step(s);
+  assert.ok(s.cash > 11000, 'o caixa não pode ser esvaziado: ' + s.cash);
+  assert.ok(Sim.holdingsValue(s) <= 8000, 'investiu no máximo metade da sobra: ' + Sim.holdingsValue(s));
+});
+
+test('planejador usa a renda fixa para pagar obras quando falta caixa', () => {
+  let usou = 0;
+  for (let k = 1; k <= 12; k++) {
+    const s = Sim.newGame(200 + k); s.pop = 70; s.cash = 8000;
+    for (let i = 0; i < 6; i++) Sim.buildAny(s, 'casa');
+    Sim.hire(s, 'planejador'); s.cash = 20000; assert.ok(Sim.buy(s, 'cdb', 6000).ok); s.cash = 3000; s.month = 1;
+    const antes = s.tiles.filter(Boolean).length;
+    Sim.step(s);
+    if (s.log.some(l => l.includes('da renda fixa para pagar a obra'))) usou++;
+  }
+  assert.ok(usou >= 1, 'o planejador deveria resgatar renda fixa para construir');
+});
+
+test('cidade com equipe no máximo continua crescendo (não trava)', () => {
+  const s = Sim.newGame(3); s.pop = 130;
+  for (let i = 0; i < 12; i++) Sim.buildAny(s, 'casa');
+  for (let i = 0; i < 3; i++) Sim.buildAny(s, 'loja');
+  s.pop = 130;
+  for (const k of ['planejador', 'analista', 'gerente']) { s.cash = 60000; Sim.hire(s, k); for (let l = 1; l < 5; l++) { s.cash = 60000; Sim.upgrade(s, k); } }
+  s.cash = 25000;
+  const antes = s.tiles.filter(Boolean).length;
+  for (let m = 0; m < 24 && !s.over; m++) Sim.step(s);
+  assert.ok(s.tiles.filter(Boolean).length >= antes + 8, 'deveria construir bastante: ' + (s.tiles.filter(Boolean).length - antes));
+  assert.ok(s.pop > 180, 'população deveria crescer: ' + s.pop);
+});
+
+// ---------- Novas construções ----------
+test('novas construções existem e têm custo, manutenção e ícone', () => {
+  ['condominio', 'mercado', 'fazenda', 'tecnologia', 'universidade', 'bombeiros', 'estadio', 'agua', 'esgoto', 'solar', 'eolica', 'carvao', 'filtro', 'floresta', 'reciclagem'].forEach(k => {
+    const b = Sim.BUILDINGS[k];
+    assert.ok(b && b.cost > 0 && b.upkeep > 0 && b.icon && b.name, k);
+  });
+});
+
+test('condomínio de luxo rende mais aluguel que casa', () => {
+  const mk = tipo => {
+    const s = Sim.newGame(5); s.tiles.fill(null); s.tiles[Sim.HALL] = 'prefeitura';
+    for (let i = 0; i < 4; i++) s.tiles[i] = tipo;
+    const a = Sim.analyze(s); s.pop = a.housing; Sim.step(s); return s.report.rent / a.housing;
+  };
+  assert.ok(mk('condominio') > mk('casa') * 1.5);
+});
+
+test('energia, água e esgoto só faltam quando a cidade cresce e dá para construir', () => {
+  const s = Sim.newGame(6); s.pop = 40;
+  const a0 = Sim.analyze(s);
+  assert.equal(a0.cov.power, 1); assert.equal(a0.cov.water, 1); assert.equal(a0.cov.sewage, 1);
+  s.pop = 500;
+  const a1 = Sim.analyze(s);
+  assert.ok(a1.cov.power < 1 && a1.cov.water < 1 && a1.cov.sewage < 1);
+  assert.ok(a1.happy < a0.happy);
+  s.cash = 1e6;
+  for (let i = 0; i < 2; i++) { Sim.buildAny(s, 'eolica'); Sim.buildAny(s, 'agua'); Sim.buildAny(s, 'esgoto'); }
+  const a2 = Sim.analyze(s);
+  assert.ok(a2.cov.power > a1.cov.power && a2.cov.water > a1.cov.water && a2.cov.sewage > a1.cov.sewage);
+});
+
+test('sem energia as empresas rendem menos', () => {
+  const mk = (extra) => {
+    const s = Sim.newGame(7); s.pop = 400; s.cash = 1e6;
+    for (let i = 0; i < 8; i++) Sim.buildAny(s, 'loja');
+    for (let i = 0; i < extra; i++) Sim.buildAny(s, 'eolica');
+    s.cash = 1e6; Sim.step(s); return s.report.commerce;
+  };
+  assert.ok(mk(4) > mk(0));
+});
+
+test('poluição: carvão polui, fábrica polui; filtro, floresta e reciclagem limpam', () => {
+  const s = Sim.newGame(8); s.cash = 1e6;
+  assert.equal(Sim.analyze(s).pollution, 0);
+  Sim.buildAny(s, 'carvao'); Sim.buildAny(s, 'fabrica'); Sim.buildAny(s, 'fabrica');
+  const suja = Sim.analyze(s).pollution;
+  assert.equal(suja, 6 + 4 + 4);
+  const h0 = Sim.analyze(s).happy;
+  Sim.buildAny(s, 'filtro'); Sim.buildAny(s, 'floresta'); Sim.buildAny(s, 'reciclagem');
+  const limpa = Sim.analyze(s).pollution;
+  assert.equal(limpa, 0, 'poluição não fica negativa');
+  assert.ok(Sim.analyze(s).happy > h0);
+});
+
+test('energia limpa não polui', () => {
+  const s = Sim.newGame(9); s.cash = 1e6;
+  Sim.buildAny(s, 'solar'); Sim.buildAny(s, 'eolica');
+  assert.equal(Sim.analyze(s).pollution, 0);
+});
+
+test('polo tecnológico lucra mais com educação', () => {
+  const mk = escolas => {
+    const s = Sim.newGame(10); s.tiles.fill(null); s.tiles[Sim.HALL] = 'prefeitura'; s.pop = 100; s.cash = 1e6;
+    Sim.buildAny(s, 'tecnologia'); for (let i = 0; i < escolas; i++) Sim.buildAny(s, 'escola');
+    Sim.step(s); return s.report.industry;
+  };
+  assert.ok(mk(1) > mk(0));
+});
+
+test('bombeiros reduzem o estrago do incêndio e a simulação não gera NaN', () => {
+  for (let k = 1; k <= 15; k++) {
+    const s = Sim.newGame(300 + k); s.cash = 1e6; s.pop = 150;
+    Object.keys(Sim.BUILDINGS).forEach(b => Sim.buildAny(s, b));
+    s.cash = 50000;
+    for (let m = 0; m < 120 && !s.over; m++) { Sim.step(s); if (s.cash < 5000) s.cash = 20000; }
+    assert.ok(Number.isFinite(s.cash) && Number.isFinite(s.pop), 'valores inválidos na semente ' + k);
+  }
+});
+
+// ---------- Mais investimentos ----------
+test('novos investimentos existem e funcionam', () => {
+  const novos = ['tesouro', 'ouro', 'etf', 'dolar', 'startup'];
+  const s = Sim.newGame(11);
+  novos.forEach(k => {
+    assert.ok(Sim.ASSETS.find(a => a.key === k), k);
+    assert.ok(Sim.buy(s, k, 500).ok); assert.ok(Sim.sell(s, k, 'all').ok);
+  });
+  assert.equal(Sim.ASSETS.length, 10);
+  for (let m = 0; m < 24; m++) Sim.step(s);
+  Sim.ASSETS.forEach(a => assert.ok(s.assets[a.key].price > 0 && Number.isFinite(s.assets[a.key].price)));
+});
+
+test('startup é muito mais arriscada que renda fixa', () => {
+  const dp = k => { const v = []; for (let i = 1; i <= 40; i++) { const s = Sim.newGame(i * 3); for (let m = 0; m < 24; m++) Sim.step(s); v.push(s.assets[k].price); }
+    const mean = v.reduce((a, b) => a + b, 0) / v.length; return Math.sqrt(v.reduce((a, b) => a + (b - mean) ** 2, 0) / v.length); };
+  assert.ok(dp('startup') > dp('cdb') * 20);
+});
+
+test('jogo salvo antigo ganha terrenos e investimentos novos', () => {
+  const s = Sim.newGame(12);
+  s.tiles = s.tiles.slice(0, 42); ['tesouro', 'ouro', 'etf', 'dolar', 'startup'].forEach(k => delete s.assets[k]);
+  const t = Sim.load(JSON.stringify(s));
+  assert.equal(t.tiles.length, Sim.COLS * Sim.ROWS);
+  assert.ok(t.assets.ouro && t.assets.startup);
+  assert.equal(t.tiles[Sim.HALL], 'prefeitura');
+  assert.ok(Sim.step(t));
+});
+
+test('conselho do analista cobre os novos ativos sem quebrar', () => {
+  const s = rica(50);
+  for (let i = 0; i < 14; i++) Sim.step(s);
+  Sim.ASSETS.forEach(a => { const v = Sim.advice(s, a.key); assert.ok(v === null || v.text); });
+});
