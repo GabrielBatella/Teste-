@@ -170,7 +170,7 @@ test('gerente reduz os juros e paga dívida quando sobra dinheiro', () => {
   const s = rica(2);
   Sim.borrow(s, 10000);
   Sim.hire(s, 'gerente');
-  assert.equal(Sim.loanRate(s), 0.01);
+  assert.ok(Sim.loanRate(s) < 0.015, 'juros menores com o gerente');
   const antes = s.debt;
   Sim.step(s);
   assert.ok(s.debt < antes, 'deveria amortizar');
@@ -276,4 +276,80 @@ test('dica só descreve o problema e é ocasional', () => {
   }
   const frac = shown / total;
   assert.ok(frac > 0.2 && frac < 0.7, 'frequência da dica: ' + frac);
+});
+
+// ---------- Níveis e capacidade ----------
+test('treinar sobe o nível, cobra uma vez e aumenta o salário', () => {
+  const s = rica(20);
+  Sim.hire(s, 'planejador');
+  assert.equal(Sim.levelOf(s, 'planejador'), 1);
+  const sal1 = Sim.salaryOf(s, 'planejador'), cost = Sim.upgradeCost(s, 'planejador'), cash = s.cash;
+  assert.ok(Sim.upgrade(s, 'planejador').ok);
+  assert.equal(s.cash, cash - cost);
+  assert.equal(Sim.levelOf(s, 'planejador'), 2);
+  assert.ok(Sim.salaryOf(s, 'planejador') > sal1, 'salário deve subir');
+  assert.equal(Sim.upgrade(s, 'analista').ok, false, 'não contratado');
+});
+
+test('nível máximo e dinheiro insuficiente', () => {
+  const s = rica(21);
+  Sim.hire(s, 'gerente');
+  s.cash = 100;
+  assert.equal(Sim.upgrade(s, 'gerente').ok, false);
+  s.cash = 1e6;
+  for (let i = 1; i < Sim.MAX_LEVEL; i++) assert.ok(Sim.upgrade(s, 'gerente').ok);
+  assert.equal(Sim.levelOf(s, 'gerente'), Sim.MAX_LEVEL);
+  assert.equal(Sim.upgradeCost(s, 'gerente'), null);
+  assert.equal(Sim.upgrade(s, 'gerente').ok, false);
+});
+
+test('cidade grande sobrecarrega funcionário de nível baixo', () => {
+  const s = rica(22);
+  Sim.hire(s, 'planejador');
+  s.pop = 60;  assert.equal(Sim.efficiency(s, 'planejador'), 1);
+  s.pop = 200; const e1 = Sim.efficiency(s, 'planejador');
+  assert.ok(e1 < 0.5, 'sobrecarregado: ' + e1);
+  Sim.upgrade(s, 'planejador'); Sim.upgrade(s, 'planejador');
+  assert.ok(Sim.efficiency(s, 'planejador') > e1, 'treinar melhora a eficiência');
+  s.pop = 5000; assert.equal(Sim.efficiency(s, 'planejador') >= 0.25, true, 'tem piso');
+});
+
+test('mais nível = efeitos melhores (cidade pequena para isolar o nível)', () => {
+  const s = rica(23); s.pop = 80;
+  Sim.hire(s, 'planejador'); Sim.hire(s, 'analista'); Sim.hire(s, 'gerente');
+  const c1 = Sim.staffInfo(s, 'planejador').lines.join('|');
+  const cut1 = Sim.efficiency(s, 'planejador');
+  ['planejador', 'analista', 'gerente'].forEach(k => { Sim.upgrade(s, k); Sim.upgrade(s, k); });
+  assert.notEqual(Sim.staffInfo(s, 'planejador').lines.join('|'), c1);
+  assert.ok(Sim.loanLimit(s) > 30000, 'limite de crédito aumenta com o gerente');
+  assert.ok(Sim.loanRate(s) < 0.015 - 0.005, 'juros caem com o nível');
+  assert.ok(cut1 === 1);
+});
+
+test('demitir zera o nível', () => {
+  const s = rica(24);
+  Sim.hire(s, 'analista'); Sim.upgrade(s, 'analista');
+  Sim.fire(s, 'analista');
+  Sim.hire(s, 'analista');
+  assert.equal(Sim.levelOf(s, 'analista'), 1);
+});
+
+test('planejador de nível alto faz mais obras por mês', () => {
+  const mk = lvl => {
+    const s = rica(25); s.pop = 70; s.cash = 200000;
+    for (let i = 0; i < 7; i++) Sim.buildAny(s, 'casa');
+    Sim.hire(s, 'planejador');
+    for (let i = 1; i < lvl; i++) Sim.upgrade(s, 'planejador');
+    s.cash = 200000; s.month = 0;
+    const antes = s.tiles.filter(Boolean).length;
+    Sim.step(s); s.month = 2;
+    return s.tiles.filter(Boolean).length - antes;
+  };
+  assert.ok(mk(5) >= mk(1), 'nível 5 constrói ao menos o mesmo que o 1');
+});
+
+test('jogo salvo sem nível ganha nível 1', () => {
+  const s = rica(26); Sim.hire(s, 'gerente'); delete s.staff.gerente.level;
+  const t = Sim.load(JSON.stringify(s));
+  assert.equal(Sim.levelOf(t, 'gerente'), 1);
 });

@@ -84,3 +84,10 @@ button.btn:disabled{opacity:.35}
 .locked{margin-top:10px;color:var(--mut);font-weight:600}
 .asset.dim{opacity:.6}
 .quiet{padding:10px 4px;color:var(--mut);font-size:15px}
+
+.eff{margin-top:10px}.eff .effhead{font-size:15px;font-weight:700;margin-bottom:5px}
+.eff i{display:block;height:10px;background:#0b121a;border-radius:6px;overflow:hidden;margin-bottom:5px}
+.eff i b{display:block;height:100%;border-radius:6px}
+.perks{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.perks span{background:#0b121a;border-radius:20px;padding:6px 10px;font-size:13px}
+button.btn small{display:block;font-weight:400;font-size:12px;margin-top:2px}

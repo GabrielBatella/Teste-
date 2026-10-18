@@ -12,7 +12,7 @@
   const MISSIONS = {
     pop100: '👥 100 habitantes', pop500: '👥 500 habitantes', pop1500: '👥 1.500 habitantes',
     nw50: '💰 R$ 50 mil de patrimônio', nw200: '💰 R$ 200 mil de patrimônio', nw1m: '💎 R$ 1 milhão de patrimônio',
-    diver: '📈 Investir em 3 coisas diferentes', team: '👔 Contratar 2 funcionários', happy80: '😄 Deixar todo mundo muito feliz',
+    diver: '📈 Investir em 3 coisas diferentes', team: '👔 Contratar 2 funcionários', train: '🎓 Treinar um funcionário até o nível 3', happy80: '😄 Deixar todo mundo muito feliz',
   };
 
   function save() { try { localStorage.setItem(SAVE, Sim.serialize(s)); } catch (e) {} }
@@ -143,14 +143,30 @@
       <button class="btn sec" data-pay="all" ${s.debt <= 0 ? 'disabled' : ''}>Quitar tudo</button></div></div>`;
   }
 
+  function effText(e) {
+    const p = Math.round(e * 100);
+    if (e >= 0.95) return ['🟢', 'Dá conta da cidade inteira', 'var(--ok)'];
+    if (e >= 0.65) return ['🟡', `Meio sobrecarregado: rende ${p}%`, 'var(--warn)'];
+    return ['🔴', `Sobrecarregado! Rende só ${p}%`, 'var(--bad)'];
+  }
+
   function viewTeam() {
     const cost = Sim.staffCost(s);
     const cards = Sim.SALARY_ORDER.map(k => {
       const f = Sim.STAFF[k], on = Sim.hired(s, k), open = Sim.isUnlocked(s, k);
-      let body;
+      let body = '', sub = `${M(f.salary)} por mês`;
       if (on) {
-        const auto = Sim.active(s, k);
-        body = `<div class="btns"><button class="btn ${auto ? '' : 'sec'}" data-auto="${k}">${auto ? '🤖 Decisões automáticas: LIGADAS' : '🤖 Decisões automáticas: DESLIGADAS'}</button>
+        const inf = Sim.staffInfo(s, k), auto = Sim.active(s, k), ef = effText(inf.efficiency);
+        sub = `Nível ${inf.level}/${Sim.MAX_LEVEL} · ${M(inf.salary)} por mês`;
+        const train = inf.nextCost == null
+          ? '<button class="btn sec" disabled>⭐ Nível máximo</button>'
+          : `<button class="btn" data-upgrade="${k}" ${s.cash < inf.nextCost ? 'disabled' : ''}>🎓 Treinar para o nível ${inf.level + 1}<small>${M(inf.nextCost)} agora · salário vira ${M(inf.nextSalary)}/mês</small></button>`;
+        body = `<div class="eff"><div class="effhead"><span>${ef[0]} ${ef[1]}</span></div>
+            <i><b style="width:${Math.round(inf.efficiency * 100)}%;background:${ef[2]}"></b></i>
+            <div class="mut" style="font-size:12px">Aguenta uma cidade de até ${inf.capacity.toLocaleString('pt-BR')} habitantes (a sua tem ${Math.floor(s.pop).toLocaleString('pt-BR')}).</div></div>
+          <div class="perks">${inf.lines.map(l => `<span>${l}</span>`).join('')}</div>
+          <div class="btns">${train}</div>
+          <div class="btns"><button class="btn ${auto ? '' : 'sec'}" data-auto="${k}">${auto ? '🤖 Decisões automáticas: LIGADAS' : '🤖 Decisões automáticas: DESLIGADAS'}</button>
           <button class="btn red" data-fire="${k}" style="flex:0 0 auto">Demitir</button></div>`;
       } else if (open) {
         body = `<div class="btns"><button class="btn" data-hire="${k}" ${s.cash < f.salary ? 'disabled' : ''}>Contratar · ${M(f.salary)}/mês</button></div>`;
@@ -158,13 +174,15 @@
         body = `<div class="locked">🔒 ${f.need}</div>`;
       }
       return `<div class="card asset ${open || on ? '' : 'dim'}"><div class="top"><span class="ico">${f.icon}</span>
-        <div class="nm">${f.name}<small>${M(f.salary)} por mês</small></div>
+        <div class="nm">${f.name}<small>${sub}</small></div>
         <div class="val">${on ? '✅' : open ? '' : '🔒'}</div></div>
         <div class="mut" style="margin-top:8px;font-size:14px">${f.desc}</div>${body}</div>`;
     }).join('');
     return `<div class="card"><h3>👔 Folha de pagamento</h3><div class="big ${cost ? 'neg' : ''}">${cost ? '-' : ''}${M(cost)}</div>
-      <div class="mut" style="text-align:center">por mês</div></div><div class="assets">${cards}</div>
-      <div class="mut" style="font-size:13px;margin-top:6px">Os funcionários ajudam, mas não fazem tudo: você ainda decide o resto. Dá para desligar as decisões automáticas ou demitir quando quiser.</div>`;
+      <div class="mut" style="text-align:center">por mês</div></div>
+      <div class="mut" style="font-size:14px;margin-bottom:12px">Quanto maior a cidade, mais trabalho. Funcionário sobrecarregado rende menos: treine a equipe para acompanhar o crescimento. Treinar custa uma vez e aumenta o salário.</div>
+      <div class="assets">${cards}</div>
+      <div class="mut" style="font-size:13px;margin-top:6px">Eles ajudam, mas não fazem tudo. Dá para desligar as decisões automáticas. Demitir faz perder o nível.</div>`;
   }
 
   function viewNews() {
@@ -208,7 +226,8 @@
     else if (d.sellall) r = Sim.sell(s, d.sellall, 'all');
     else if (d.tax) { Sim.setTax(s, s.taxRate + +d.tax); r = {ok: true}; }
     else if (d.hire) { r = Sim.hire(s, d.hire); if (r.ok) toast(Sim.STAFF[d.hire].icon + ' ' + Sim.STAFF[d.hire].name + ' contratado!'); }
-    else if (d.fire) { if (!confirm('Demitir ' + Sim.STAFF[d.fire].name + '?')) return; r = Sim.fire(s, d.fire); if (r.ok) toast('Demitido.'); }
+    else if (d.upgrade) { r = Sim.upgrade(s, d.upgrade); if (r.ok) toast('🎓 ' + Sim.STAFF[d.upgrade].name + ' subiu para o nível ' + Sim.levelOf(s, d.upgrade) + '!'); }
+    else if (d.fire) { if (!confirm('Demitir ' + Sim.STAFF[d.fire].name + '? Ele perde o nível.')) return; r = Sim.fire(s, d.fire); if (r.ok) toast('Demitido.'); }
     else if (d.auto) { r = Sim.setAuto(s, d.auto, !Sim.active(s, d.auto)); }
     else if (d.loan) r = Sim.borrow(s, +d.loan);
     else if (d.pay) r = Sim.repay(s, d.pay === 'all' ? s.debt : +d.pay);

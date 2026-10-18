@@ -4,7 +4,7 @@
   else root.Sim = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   const COLS = 6, ROWS = 7, HALL = 3 * COLS + 2;
-  const BASIC_COST = 1.5, ANALYST_EDGE = 0.002;
+  const BASIC_COST = 1.5;
   const OVERDRAFT_LIMIT = 5000, LOAN_LIMIT = 30000, LOAN_RATE = 0.015, OVERDRAFT_RATE = 0.03, FEE = 0.003;
 
   const BUILDINGS = {
@@ -29,13 +29,18 @@
 
   const STAFF = {
     planejador: {name: 'Planejador Urbano', icon: '🏗️', salary: 120, need: 'Libera com 50 habitantes', test: s => s.pop >= 50,
-      desc: 'Mostra o que falta na cidade, constrói sozinho o que está faltando quando sobra dinheiro e reduz 25% da manutenção e consegue 15% de desconto nas obras.'},
+      desc: 'Mostra o que falta na cidade, constrói sozinho o que está faltando quando sobra dinheiro, reduz custos de manutenção e de serviços e consegue desconto nas obras.'},
     analista: {name: 'Analista de Investimentos', icon: '📊', salary: 100, need: 'Libera com R$ 15 mil de patrimônio', test: s => netWorth(s) >= 15000,
-      desc: 'Diz se cada investimento está caro ou barato, aplica as sobras em renda fixa, vende se algo despencar 25% e zera a taxa de corretagem e consegue um retorno um pouco melhor (+0,2% ao mês).'},
+      desc: 'Avisa quando um investimento está caro ou barato, aplica as sobras em renda fixa, vende se algo despencar, zera a taxa de corretagem e melhora o retorno.'},
     gerente: {name: 'Gerente Financeiro', icon: '🏦', salary: 70, need: 'Libera com 80 habitantes', test: s => s.pop >= 80,
-      desc: 'Paga a dívida quando sobra dinheiro, pede um empréstimo pequeno para você não ficar no vermelho e consegue juros menores.'},
+      desc: 'Paga a dívida quando sobra dinheiro, pede um empréstimo pequeno para você não ficar no vermelho, consegue juros menores, mais crédito e melhora a arrecadação de impostos.'},
   };
   const SALARY_ORDER = ['planejador', 'analista', 'gerente'];
+  // Níveis de 1 a 5: salário sobe, treinamento custa uma vez, e cada nível aguenta uma cidade maior.
+  const MAX_LEVEL = 5;
+  const SALARY_MULT = [1, 1.3, 1.7, 2.2, 3];
+  const TRAIN_COST = [1500, 3000, 5000, 8000];      // para ir do nível 1→2, 2→3...
+  const CAPACITY = [80, 150, 260, 450, 800];         // habitantes que dá conta de atender
 
   const GOALS = [
     {id: 'pop100',  text: 'Chegar a 100 habitantes',  test: s => s.pop >= 100},
@@ -46,6 +51,7 @@
     {id: 'nw1m',    text: 'Patrimônio de R$ 1 milhão', test: s => netWorth(s) >= 1000000},
     {id: 'diver',   text: 'Investir em 3 ativos diferentes', test: s => ASSETS.filter(a => s.assets[a.key].units > 0).length >= 3},
     {id: 'team',    text: 'Contratar 2 funcionários', test: s => SALARY_ORDER.filter(k => hired(s, k)).length >= 2},
+    {id: 'train',   text: 'Treinar um funcionário até o nível 3', test: s => SALARY_ORDER.some(k => levelOf(s, k) >= 3)},
     {id: 'happy80', text: 'Felicidade acima de 80',   test: s => s.pop >= 50 && s.happy >= 80},
   ];
 
@@ -77,26 +83,65 @@
 
   function defaultStaff() {
     const o = {};
-    SALARY_ORDER.forEach(k => { o[k] = {hired: false, auto: true}; });
+    SALARY_ORDER.forEach(k => { o[k] = {hired: false, auto: true, level: 1}; });
     return o;
   }
   const hired = (s, k) => !!(s.staff && s.staff[k] && s.staff[k].hired);
   const active = (s, k) => hired(s, k) && s.staff[k].auto;
+  const levelOf = (s, k) => hired(s, k) ? (s.staff[k].level || 1) : 0;
   const isUnlocked = (s, k) => STAFF[k].test(s);
-  function staffCost(s) { return SALARY_ORDER.reduce((t, k) => t + (hired(s, k) ? STAFF[k].salary : 0), 0); }
-  const loanRate = s => hired(s, 'gerente') ? 0.010 : LOAN_RATE;
+  const salaryAt = (k, lvl) => Math.round(STAFF[k].salary * SALARY_MULT[lvl - 1] / 10) * 10;
+  const salaryOf = (s, k) => hired(s, k) ? salaryAt(k, levelOf(s, k)) : 0;
+  function staffCost(s) { return SALARY_ORDER.reduce((t, k) => t + salaryOf(s, k), 0); }
+  // Eficiência: 1 = dá conta da cidade; menos que isso = sobrecarregado
+  const capacityOf = (s, k) => CAPACITY[levelOf(s, k) - 1] || 0;
+  const efficiency = (s, k) => hired(s, k) ? clamp(capacityOf(s, k) / Math.max(1, s.pop), 0.25, 1) : 0;
+  const loanLimit = s => LOAN_LIMIT + (hired(s, 'gerente') ? 8000 * (levelOf(s, 'gerente') - 1) : 0);
+  const loanRate = s => LOAN_RATE - (hired(s, 'gerente') ? (0.004 + 0.0012 * (levelOf(s, 'gerente') - 1)) * efficiency(s, 'gerente') : 0);
+  const upkeepCut = s => hired(s, 'planejador') ? (0.30 + 0.06 * (levelOf(s, 'planejador') - 1)) * efficiency(s, 'planejador') : 0;
+  const taxBoost = s => hired(s, 'gerente') ? 0.045 * levelOf(s, 'gerente') * efficiency(s, 'gerente') : 0;
+  const buildDiscount = s => 0.10 + 0.03 * (levelOf(s, 'planejador') - 1);
+  const analystEdge = s => hired(s, 'analista') ? (0.003 + 0.001 * (levelOf(s, 'analista') - 1)) * efficiency(s, 'analista') : 0;
+  const stopLoss = s => [0.25, 0.22, 0.20, 0.17, 0.15][levelOf(s, 'analista') - 1] || 0.25;
+
+  function upgradeCost(s, k) { return hired(s, k) && levelOf(s, k) < MAX_LEVEL ? TRAIN_COST[levelOf(s, k) - 1] : null; }
+  function upgrade(s, k) {
+    if (s.over) return {ok: false, msg: 'O jogo acabou.'};
+    if (!hired(s, k)) return {ok: false, msg: 'Contrate primeiro.'};
+    const cost = upgradeCost(s, k);
+    if (cost == null) return {ok: false, msg: 'Já está no nível máximo.'};
+    if (s.cash < cost) return {ok: false, msg: 'Dinheiro insuficiente para o treinamento.'};
+    s.cash -= cost; s.staff[k].level = levelOf(s, k) + 1;
+    return {ok: true};
+  }
+  // Resumo para a interface
+  function staffInfo(s, k) {
+    const L = levelOf(s, k), e = efficiency(s, k), lines = [];
+    if (k === 'planejador') {
+      lines.push(`Manutenção e serviços -${Math.round(upkeepCut(s) * 100)}%`, `Obras com ${Math.round(buildDiscount(s) * 100)}% de desconto`,
+        `Até ${[1, 1, 2, 2, 3][L - 1]} obra(s) por mês`);
+    } else if (k === 'analista') {
+      lines.push(`Retorno +${(analystEdge(s) * 100).toFixed(2).replace('.', ',')}% ao mês`, `Vende se cair ${Math.round(stopLoss(s) * 100)}%`,
+        `Aplica até ${money(3000 * L)} por mês`);
+    } else {
+      lines.push(`Arrecadação de impostos +${Math.round(taxBoost(s) * 100)}%`, `Juros de ${(loanRate(s) * 100).toFixed(2).replace('.', ',')}% ao mês`, `Limite ${money(loanLimit(s))}`,
+        `Paga até ${money(3000 * L)} de dívida por mês`);
+    }
+    return {level: L, salary: salaryOf(s, k), efficiency: e, capacity: capacityOf(s, k), lines,
+      nextCost: upgradeCost(s, k), nextSalary: L < MAX_LEVEL ? salaryAt(k, L + 1) : null};
+  }
 
   function hire(s, k) {
     if (s.over || !STAFF[k]) return {ok: false, msg: 'Funcionário inválido.'};
     if (hired(s, k)) return {ok: false, msg: 'Já contratado.'};
     if (!isUnlocked(s, k)) return {ok: false, msg: STAFF[k].need + '.'};
     if (s.cash < STAFF[k].salary) return {ok: false, msg: 'Dinheiro insuficiente para o 1º salário.'};
-    s.staff[k] = {hired: true, auto: true};
+    s.staff[k] = {hired: true, auto: true, level: 1};
     return {ok: true};
   }
   function fire(s, k) {
     if (!hired(s, k)) return {ok: false, msg: 'Não está contratado.'};
-    s.staff[k] = {hired: false, auto: true};
+    s.staff[k] = {hired: false, auto: true, level: 1};
     return {ok: true};
   }
   function setAuto(s, k, on) {
@@ -145,7 +190,7 @@
     if (d.vol <= 0.002 || h.length < 6) return null;
     const n = Math.min(12, h.length), recent = h.slice(-n);
     const base = recent.reduce((t, x) => t + x, 0) / n;
-    const r = h[h.length - 1] / (base * Math.pow(1 + d.drift, (n - 1) / 2)) - 1, lim = Math.max(0.04, d.vol * 1.3);
+    const r = h[h.length - 1] / (base * Math.pow(1 + d.drift, (n - 1) / 2)) - 1, lim = Math.max(0.04, d.vol * (1.4 - 0.1 * (levelOf(s, 'analista') || 1)));
     if (r < -lim) return {icon: '✅', text: 'Está barato agora. Boa hora de comprar.'};
     if (r > lim) return {icon: '⚠️', text: 'Está caro agora. Melhor esperar ou vender um pouco.'};
     return null;
@@ -244,7 +289,7 @@
 
   function borrow(s, amount) {
     if (s.over || !(amount > 0)) return {ok: false, msg: 'Valor inválido.'};
-    if (s.debt + amount > LOAN_LIMIT) return {ok: false, msg: 'Limite de crédito atingido.'};
+    if (s.debt + amount > loanLimit(s)) return {ok: false, msg: 'Limite de crédito atingido.'};
     s.debt += amount; s.cash += amount; return {ok: true};
   }
   function repay(s, amount) {
@@ -287,18 +332,18 @@
     const econ = s.mods.econLeft > 0 ? s.mods.econ : 1;
     const upk = s.mods.upkeepLeft > 0 ? s.mods.upkeep : 1;
 
-    const taxes = a.employed * 8 * (s.taxRate / 10);
+    const taxes = a.employed * 8 * (s.taxRate / 10) * (1 + taxBoost(s));
     const rent = Math.min(s.pop, a.housing) * 5;
     const consumption = a.employed * 12;
     const shops = (a.c.loja || 0) * 300;
     const commerce = Math.min(consumption, shops) * 0.22 * econ;
     const industry = (a.c.fabrica || 0) * 160 * Math.min(1, a.workers / Math.max(1, a.jobs)) * econ;
     const income = taxes + rent + commerce + industry;
-    const maint = a.upkeep * upk * (hired(s, 'planejador') ? 0.75 : 1);
+    const maint = a.upkeep * upk * (1 - upkeepCut(s));
     const salaries = staffCost(s);
     const interest = s.debt * loanRate(s);
     const overdraft = s.cash < 0 ? -s.cash * OVERDRAFT_RATE : 0;
-    const basic = s.pop * BASIC_COST;
+    const basic = s.pop * BASIC_COST * (1 - upkeepCut(s));
     const expenses = maint + basic + salaries + interest + overdraft;
     s.cash += income - expenses;
 
@@ -314,7 +359,7 @@
     // Mercado
     ASSETS.forEach(d => {
       const x = s.assets[d.key];
-      x.price *= Math.max(0.2, 1 + d.drift + (d.key !== 'poupanca' && hired(s, 'analista') ? ANALYST_EDGE : 0) + d.vol * gauss(s));
+      x.price *= Math.max(0.2, 1 + d.drift + (d.key !== 'poupanca' ? analystEdge(s) : 0) + d.vol * gauss(s));
       x.hist.push(x.price); if (x.hist.length > 36) x.hist.shift();
     });
     if (s.mods.econLeft > 0) s.mods.econLeft--;
@@ -360,13 +405,13 @@
   // Decisões automáticas dos funcionários (só as simples e seguras)
   function staffActs(s) {
     if (active(s, 'gerente')) {
-      if (s.cash < 0 && s.debt < LOAN_LIMIT) {
-        const amt = Math.min(LOAN_LIMIT - s.debt, Math.ceil((-s.cash + 1000) / 1000) * 1000);
+      if (s.cash < 0 && s.debt < loanLimit(s)) {
+        const amt = Math.min(loanLimit(s) - s.debt, Math.ceil((-s.cash + 1000) / 1000) * 1000);
         s.debt += amt; s.cash += amt; note(s, `🏦 Gerente pegou ${money(amt)} emprestado para evitar o vermelho.`);
       } else if (s.debt > 0) {
         const spare = s.cash - reserve(s, analyze(s)) - 4000;
         if (spare >= 500) {
-          const pay = Math.floor(Math.min(s.debt, 3000, spare));
+          const pay = Math.floor(Math.min(s.debt, 3000 * levelOf(s, 'gerente'), spare));
           s.debt -= pay; s.cash -= pay; note(s, `🏦 Gerente pagou ${money(pay)} da dívida.`);
         }
       }
@@ -374,23 +419,24 @@
     if (active(s, 'analista')) {
       ['acoes', 'cripto', 'fii'].forEach(k => {
         const x = s.assets[k], v = x.units * x.price;
-        if (x.units > 0 && x.spent > 0 && v < x.spent * 0.75) {
+        if (x.units > 0 && x.spent > 0 && v < x.spent * (1 - stopLoss(s))) {
           sell(s, k, 'all'); note(s, `📊 Analista vendeu ${ASSETS.find(d => d.key === k).name} para limitar o prejuízo.`);
         }
       });
       const spare = s.cash - reserve(s, analyze(s)) - 3000;
       if (spare >= 1000) {
-        const amt = Math.floor(Math.min(3000, spare));
+        const amt = Math.floor(Math.min(3000 * levelOf(s, 'analista'), spare));
         buy(s, 'cdb', amt); note(s, `📊 Analista aplicou ${money(amt)} em Renda Fixa.`);
       }
     }
-    if (active(s, 'planejador')) {
-      const a = analyze(s), k = recommend(s, a);
-      if (k) {
-        const cost = BUILDINGS[k].cost;
-        if (cost <= 4000 && s.cash - cost * 0.85 >= reserve(s, a) && build(s, s.tiles.findIndex(t => !t), k).ok) {
-          s.cash += Math.round(cost * 0.15); note(s, `🏗️ Planejador construiu: ${BUILDINGS[k].name}.`);
-        }
+    if (active(s, 'planejador') && (s.month % 2 === 0 || efficiency(s, 'planejador') >= 0.5)) {
+      const L = levelOf(s, 'planejador'), maxBuilds = [1, 1, 2, 2, 3][L - 1], cap = 4000 + 1500 * (L - 1);
+      for (let i = 0; i < maxBuilds; i++) {
+        const a = analyze(s), k = recommend(s, a);
+        if (!k) break;
+        const cost = BUILDINGS[k].cost, free = s.tiles.findIndex(t => !t);
+        if (cost > cap || free < 0 || s.cash - cost * (1 - buildDiscount(s)) < reserve(s, a) || !build(s, free, k).ok) break;
+        s.cash += Math.round(cost * buildDiscount(s)); note(s, `🏗️ Planejador construiu: ${BUILDINGS[k].name}.`);
       }
     }
   }
@@ -407,11 +453,12 @@
       if (!s || s.v !== 1 || !Array.isArray(s.tiles) || s.tiles.length !== COLS * ROWS) return null;
       if (!s.staff) s.staff = defaultStaff();
       if (!s.staffSeen) s.staffSeen = {};
+      SALARY_ORDER.forEach(k => { if (!s.staff[k]) s.staff[k] = {hired: false, auto: true, level: 1}; if (!s.staff[k].level) s.staff[k].level = 1; });
       return s;
     } catch (e) { return null; }
   }
 
-  return {COLS, ROWS, HALL, BUILDINGS, ASSETS, GOALS, STAFF, SALARY_ORDER, hired, active, isUnlocked, staffCost, loanRate, hire, fire, setAuto,
+  return {COLS, ROWS, HALL, BUILDINGS, ASSETS, GOALS, STAFF, SALARY_ORDER, MAX_LEVEL, hired, active, levelOf, isUnlocked, staffCost, salaryOf, efficiency, staffInfo, upgrade, upgradeCost, loanRate, loanLimit, hire, fire, setAuto,
     recommend, needs, advice, hint, LOAN_LIMIT, OVERDRAFT_LIMIT, newGame, analyze, build, buildAny, demolish, demolishOne, counts, buy, sell,
     borrow, repay, setTax, step, netWorth, holdingsValue, money, serialize, load};
 });
