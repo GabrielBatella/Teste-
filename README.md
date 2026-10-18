@@ -1,5 +1,9 @@
-# Chuva de Meteoros
+# Cidade & Capital
 
-Jogo mobile (HTML5) de desviar de meteoros e coletar estrelas. Arraste o dedo para mover a nave.
+Jogo de celular (app Android) para administrar uma cidade e investir o dinheiro dela.
 
-Jogue em: https://gabrielbatella.github.io/Teste-/
+- `www/sim.js`: motor da simulação (testado com `npm test`)
+- `www/app.js`, `www/index.html`, `www/style.css`: interface
+- `.github/workflows/apk.yml`: roda os testes e compila o APK com Capacitor
+
+O APK fica na aba **Releases** do repositório (arquivo `cidade-capital.apk`).

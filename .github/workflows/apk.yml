@@ -1,0 +1,49 @@
+name: Compilar APK
+on:
+  push:
+    branches: [main, 'claude/**']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: npm ci
+      - name: Testes da simulação
+        run: npm test
+      - name: Criar projeto Android
+        run: |
+          npx cap add android
+          sed -i 's|<activity|<activity android:screenOrientation="portrait"|' android/app/src/main/AndroidManifest.xml
+          npx cap sync android
+      - name: Compilar APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+      - name: Renomear APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk cidade-capital.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cidade-capital-apk
+          path: cidade-capital.apk
+      - name: Publicar APK para baixar no celular
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ github.ref_name == 'main' && 'main' || 'teste' }}
+          name: Cidade & Capital (APK mais recente)
+          body: Baixe o arquivo cidade-capital.apk no celular e abra para instalar.
+          files: cidade-capital.apk
+          prerelease: true
+          target_commitish: ${{ github.sha }}

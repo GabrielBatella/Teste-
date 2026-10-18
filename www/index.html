@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0f1720">
+<title>Cidade &amp; Capital</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="stats">
+      <div><small>Caixa</small><b id="s-cash">-</b></div>
+      <div><small>Data</small><b id="s-date">-</b></div>
+      <div><small>Habitantes</small><b id="s-pop">-</b></div>
+      <div><small>Felicidade</small><b id="s-happy">-</b></div>
+    </div>
+    <div class="speed" id="speed">
+      <button data-speed="0">⏸</button><button data-speed="1">▶</button><button data-speed="2">⏩</button><button data-speed="3">⏭</button>
+      <span id="s-net"></span>
+    </div>
+  </header>
+  <main id="view"></main>
+  <nav id="tabs">
+    <button data-tab="city">🏙️<span>Cidade</span></button>
+    <button data-tab="invest">📈<span>Investir</span></button>
+    <button data-tab="fin">🏦<span>Finanças</span></button>
+    <button data-tab="news">📰<span>Notícias</span></button>
+  </nav>
+</div>
+<div id="sheet" class="hidden"></div>
+<div id="toast" class="hidden"></div>
+<div id="over" class="hidden"></div>
+<script src="sim.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
