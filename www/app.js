@@ -2,7 +2,7 @@
   const SAVE = 'cidadecapital-save-v1';
   const $ = id => document.getElementById(id);
   const M = Sim.money;
-  let s, tab = 'city', speed = 1, amount = 1000, timer = null;
+  let s, tab = 'city', speed = 1, amount = 1000, timer = null, tickMs = 5000, sinceTick = 0, histFilter = 'all';
 
   const TAGS = {
     casa: 'Moradia', predio: 'Muita moradia', loja: 'Empregos e lucro', fabrica: 'Empregos, mas suja',
@@ -41,7 +41,7 @@
   }
   function toast(msg) {
     const t = $('toast'); t.textContent = msg; t.classList.remove('hidden');
-    clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.add('hidden'), 2200);
+    clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.add('hidden'), 3800);
   }
   const cls = v => v >= 0 ? 'pos' : 'neg';
   const sign = v => (v >= 0 ? '+' : '') + M(v);
@@ -49,12 +49,12 @@
   const meter = v => v >= 0.66 ? '🟢' : v >= 0.33 ? '🟡' : '🔴';
 
   function setSpeed(n) {
-    speed = n; clearInterval(timer);
-    if (n > 0 && !s.over) timer = setInterval(tick, [0, 5000, 2400][n]);
+    speed = n; clearInterval(timer); tickMs = [5000, 5000, 2400][n];
+    if (n > 0 && !s.over) timer = setInterval(tick, tickMs);
     document.querySelectorAll('#speed button').forEach(b => b.classList.toggle('on', +b.dataset.speed === n));
   }
   function tick() {
-    const before = s.log[0];
+    const before = s.log[0]; sinceTick = 0;
     Sim.step(s); save();
     if (s.log[0] !== before) toast(s.log[0].replace(/^Mês \d+: /, ''));
     render();
@@ -68,7 +68,63 @@
     else if (s.report) { d.textContent = sign(s.report.net) + ' por mês'; d.className = cls(s.report.net); } else d.textContent = '';
     $('s-pop').textContent = Math.floor(s.pop).toLocaleString('pt-BR');
     $('s-face').textContent = face(s.happy);
+    const unread = Math.max(0, (s.histN || 0) - (s.histRead || 0)), hb = $('histn');
+    hb.textContent = unread > 99 ? '99+' : unread; hb.classList.toggle('hidden', unread === 0);
   }
+
+  // ---------- Histórico de avisos ----------
+  const HIST_FILTERS = {all: ['Tudo', null], money: ['💰 Dinheiro', /R\$|investi|banco|CDB|dívida|empréstimo|imposto|lucro|prejuízo|dividend/i], team: ['👔 Equipe', /😅|construiu|reformou|contratad|demitid|treinad|Gerente|Analista|Corretor|Diplomata|Arquiteto|Auditor|Tesoureiro|Contador|Economista|Gestor|Obras|Infra|Ambiental|Social|Global/], world: ['🌍 Mundo', /tratado|relação|país|vizinh|República|Reino|Império|Federação|Ilhas|Pampas|Ducado|Emirado|Arquipélago|União|decisão política|pedido/i]};
+  function showHist() {
+    const f = HIST_FILTERS[histFilter][1];
+    const list = (s.hist || []).filter(h => !f || f.test(h.t));
+    let last = null, body = '';
+    list.slice(0, 250).forEach(h => {
+      if (h.m !== last) { body += `<div class="histm">📅 Mês ${h.m}</div>`; last = h.m; }
+      body += `<div class="logline">${h.t}</div>`;
+    });
+    $('hist').innerHTML = `<div class="panel hpanel"><div class="hhead"><h3>📜 Histórico de avisos</h3><button class="btn sec" id="histclose">Fechar</button></div>
+      <div class="chips">${Object.entries(HIST_FILTERS).map(([k, v]) => `<button class="chip ${k === histFilter ? 'on' : ''}" data-hf="${k}">${v[0]}</button>`).join('')}</div>
+      <div class="hbody">${body || '<div class="mut">Nada por aqui ainda.</div>'}</div></div>`;
+    $('hist').classList.remove('hidden');
+    s.histRead = s.histN || 0; header();
+  }
+
+  // ---------- Propostas do mundo: janela embaixo com barra de tempo ----------
+  let propRef = null, propTotal = 1;
+  function currentProposal() {
+    const w = s.world;
+    if (w.request) return {obj: w.request, kind: 'req'};
+    if (w.dilemma) return {obj: w.dilemma, kind: 'dil'};
+    return null;
+  }
+  function renderProp() {
+    const el = $('prop'), p = s.over ? null : currentProposal();
+    if (!p) { propRef = null; el.classList.add('hidden'); el.innerHTML = ''; return; }
+    if (propRef !== p.obj) {
+      propRef = p.obj; propTotal = p.obj.total || p.obj.left;
+      let head, text, btns;
+      if (p.kind === 'req') {
+        const r = p.obj, n = Sim.NEIGHBORS.find(x => x.key === r.who);
+        head = `📨 ${n.icon} ${n.name} pede dinheiro emprestado`;
+        text = `Querem <b>${M(r.amount)}</b> e prometem pagar em ${r.months} meses com juros. Existe risco de calote.`;
+        btns = `<button class="btn" data-req="1" ${s.cash < r.amount ? 'disabled' : ''}>Aceitar · emprestar ${M(r.amount)}</button><button class="btn sec" data-req="0">Recusar</button>`;
+      } else {
+        head = '🗳️ Decisão política'; text = p.obj.text;
+        btns = p.obj.options.map((o, i) => `<button class="btn ${i === 0 ? '' : 'sec'}" data-dil="${i}">${o.label}</button>`).join('');
+      }
+      el.innerHTML = `<div class="propbar"><i id="propfill"></i></div><div class="proptop"><b>${head}</b><span id="propsec"></span></div>
+        <div class="proptext">${text}</div><div class="btns propbtns">${btns}</div>`;
+      el.classList.remove('hidden');
+    }
+    updateProp();
+  }
+  function updateProp() {
+    const p = propRef && currentProposal(); if (!p || p.obj !== propRef) return;
+    const left = Math.max(0, p.obj.left - Math.min(1, sinceTick / tickMs)), frac = Math.max(0, Math.min(1, left / propTotal));
+    const f = $('propfill'); if (f) f.style.width = (frac * 100).toFixed(1) + '%';
+    const sec = $('propsec'); if (sec) sec.textContent = speed > 0 ? Math.ceil(left * tickMs / 1000) + 's' : '⏸';
+  }
+  setInterval(() => { if (speed > 0) sinceTick += 100; updateProp(); }, 100);
 
   // Dica ocasional: descreve o problema, a solução é com você
   function tip(a) {
@@ -84,15 +140,43 @@
     ['🌱 Meio ambiente', ['filtro', 'floresta', 'reciclagem']],
   ];
 
+  function levelCounts(k) {
+    const n = [0, 0, 0];
+    s.tiles.forEach((x, i) => { if (x === k) n[Math.min(3, Math.max(1, (s.lv && s.lv[i]) || 1)) - 1]++; });
+    return n;
+  }
+  const num = v => v.toLocaleString('pt-BR');
   function buildCard(k, c) {
     const b = Sim.BUILDINGS[k], n = c[k] || 0, price = Sim.buildCost(s, k), u = Sim.upkeepInfo(s, k);
     const upl = u.public ? `<div class="mut" style="font-size:13px;margin-top:6px">🏛️ Serviço público: custa ${M(Math.round(u.now))}/mês ao governo${n ? ` · a próxima unidade soma +${M(Math.round(u.next))}/mês` : ` · a 1ª custa ${M(Math.round(u.next))}/mês`}</div>` : '';
+    const lc = levelCounts(k), info = Sim.unitInfo(k, 1);
+    const caps = info.lines.map(l => `<span>${l.ico} ${l.text}${l.houses ? ` (≈ ${l.houses} ${l.houses === 1 ? 'casa' : 'casas'})` : ''}</span>`).join('');
+    const tiers = info.main ? `<div class="tiers">${[1, 2, 3].map(L => `<span class="${lc[L - 1] ? 'has' : ''}">${Sim.levelName(k, L)}<b>${num(Sim.unitInfo(k, L).main)}</b></span>`).join('')}</div>` : '';
+    const made = lc[1] + lc[2] ? `<div class="mut" style="font-size:13px;margin-top:6px">Você tem: ${[1, 2, 3].filter(L => lc[L - 1]).map(L => `${lc[L - 1]} × ${Sim.levelName(k, L)}`).join(' · ')}</div>` : '';
+    const ev = n ? Sim.evolveInfo(s, k) : null;
+    let evo = '';
+    if (ev && ev.max) evo = '<div class="mut" style="font-size:13px;margin-top:6px">⭐ Todas já estão no nível máximo.</div>';
+    else if (ev && (ev.ok || ev.early)) {
+      const gain = Math.round(Sim.unitInfo(k, ev.to).main - Sim.unitInfo(k, ev.from).main);
+      evo = `<div class="btns"><button class="btn ok2" data-evolve="${k}" ${!ev.ok || s.cash < ev.cost ? 'disabled' : ''}>⬆ Evoluir: ${ev.fromName} → ${ev.toName}<small>${ev.early ? `a cidade precisa de ${num(ev.minPop)} habitantes` : `${M(ev.cost)}${gain > 0 ? ` · +${num(gain)} de capacidade` : ''}`}</small></button></div>`;
+    }
     return `<div class="card asset"><div class="top"><span class="ico">${b.icon}</span>
       <div class="nm">${b.name}<small>${TAGS[k]}</small></div>
-      <div class="val">${n}<small>você tem</small></div></div>${upl}
+      <div class="val">${n}<small>você tem</small></div></div>
+      <div class="perks">${caps}</div>${tiers}${made}${upl}
       <div class="btns"><button class="btn" data-build="${k}" ${s.cash < price ? 'disabled' : ''}>Construir ${M(price)}${price < b.cost ? `<small>desconto do Arquiteto (era ${M(b.cost)})</small>` : ''}</button>
-      <button class="btn sec" data-demo="${k}" ${n ? '' : 'disabled'}>Demolir</button></div>
+      <button class="btn sec" data-demo="${k}" ${n ? '' : 'disabled'}>Demolir</button></div>${evo}
       </div>`;
+  }
+
+  function coverageCard() {
+    const rows = Sim.coverage(s).map(r => {
+      const col = r.ratio >= 0.85 ? 'var(--ok)' : r.ratio >= 0.5 ? 'var(--warn)' : 'var(--bad)';
+      return `<div class="cov"><div class="covh"><span>${r.icon} ${r.label}</span><b style="color:${col}">${num(Math.min(r.cap, 99999999))} de ${num(r.need)}</b></div>
+        <i><b style="width:${Math.round(r.ratio * 100)}%;background:${col}"></b></i>
+        <small class="mut">${r.key === 'housing' ? 'vagas para morar' : `atende ${num(r.cap)} ${r.key === 'power' || r.key === 'water' || r.key === 'sewage' ? 'unidades de consumo' : 'moradores'} (≈ ${num(r.houses)} casas)`}</small></div>`;
+    }).join('');
+    return `<div class="card"><h3>📊 Quanto a cidade aguenta</h3>${rows}<div class="mut" style="font-size:13px;margin-top:6px">Cada casa abriga ${Sim.BUILDINGS.casa.housing} moradores. Quando passa da capacidade, o serviço fica fraco e o povo reclama.</div></div>`;
   }
 
   const BUILDERS = ['arquiteto', 'infra', 'ambiental', 'social'];
@@ -129,7 +213,14 @@
         <div class="mini"><b>${meter(a.cov.water)}</b>💧 Água</div>
         <div class="mini"><b>${meter(a.cov.sewage)}</b>🚽 Esgoto</div>
         <div class="mini"><b>${meter(1 - Math.min(1, a.pollution / 16))}</b>🌫️ Ar limpo</div>
-      </div></div><div class="builds">${groups}</div></div>`;
+      </div></div><div class="builds">${coverageCard()}${groups}</div></div>`;
+  }
+
+  function viewMap() {
+    return `<div class="mapwrap"><div id="map3d"></div>
+      <div class="maphint">👆 Arraste para girar · ✌️ pinça para aproximar · toque duplo reinicia</div>
+      <div class="legend">${['casa', 'predio', 'loja', 'fabrica', 'escola', 'hospital', 'policia', 'parque'].map(k => `<span>${Sim.BUILDINGS[k].icon} ${Sim.BUILDINGS[k].name}</span>`).join('')}</div>
+      <div class="mut" style="font-size:13px;margin-top:8px">É só para olhar: a cidade cresce e muda sozinha conforme você constrói e evolui os prédios na aba Cidade.</div></div>`;
   }
 
   function viewInvest() {
@@ -302,7 +393,7 @@
   function viewNews() {
     const done = Sim.GOALS.filter(g => s.goals[g.id]).length;
     const list = Sim.GOALS.map(g => `<div class="mission ${s.goals[g.id] ? 'done' : ''}"><span class="ico">${s.goals[g.id] ? '✅' : '⬜'}</span>${MISSIONS[g.id] || g.text}</div>`).join('');
-    return `<div class="card"><h3>🎚️ Dificuldade: ${Math.round(Sim.DIFFICULTY * 100)}%</h3><div class="mut" style="font-size:14px">Custos da cidade e eventos ruins mais pesados. A equipe só ajuda se for contratada na ordem e na hora certas.</div></div>
+    return `<div class="card"><h3>🎚️ Dificuldade: ${Math.round(Sim.DIFFICULTY * 100)}%</h3><div class="mut" style="font-size:14px">Custos da cidade e eventos ruins mais pesados. A equipe só ajuda se você escolher bem quem contratar e na hora certa.</div></div>
       <div class="card"><h3>📈 O jogo é progressivo</h3><div class="mut" style="font-size:14px">Quanto maior a cidade e quanto mais anos passam, mais caras ficam as obras, o treinamento e a manutenção, e mais pesados os eventos. O começo é fácil; depois cada passo exige mais tempo e mais cuidado, mesmo com a equipe certa. Não existe limite de tempo: jogue devagar.</div></div>
       <div class="card"><h3>⭐ Missões (${done}/${Sim.GOALS.length})</h3>${list}</div>
       <div class="btns"><button class="btn red" id="newgame">Recomeçar jogo</button></div>`;
@@ -310,10 +401,13 @@
 
   function render() {
     header();
-    document.querySelectorAll('#tabs button').forEach(b => { b.classList.toggle('on', b.dataset.tab === tab); if (b.dataset.tab === 'world') b.classList.toggle('alert', !!(s.world.request || s.world.dilemma)); });
+    document.querySelectorAll('#tabs button').forEach(b => { b.classList.toggle('on', b.dataset.tab === tab); if (b.dataset.tab === 'world') b.classList.toggle('alert', !!(s.world.request || s.world.dilemma) && !propRef); });
+    if (tab === 'map' && $('map3d')) { renderProp(); if (window.City3D) City3D.show(s); return; }
     const keep = $('view').scrollTop;
-    $('view').innerHTML = {city: viewCity, invest: viewInvest, fin: viewFin, world: viewWorld, team: viewTeam, news: viewNews}[tab]();
+    $('view').innerHTML = {city: viewCity, map: viewMap, invest: viewInvest, fin: viewFin, world: viewWorld, team: viewTeam, news: viewNews}[tab]();
     $('view').scrollTop = keep;
+    renderProp();
+    if (tab === 'map' && window.City3D) City3D.show(s);
   }
 
   function showOver() {
@@ -332,9 +426,13 @@
     let r;
     if (t.id === 'restart') return newGame();
     if (t.id === 'newgame') { if (confirm('Apagar a cidade e recomeçar?')) newGame(); return; }
-    if (d.tab) { tab = d.tab; render(); $('view').scrollTop = 0; return; }
+    if (t.id === 'histbtn') return showHist();
+    if (t.id === 'histclose') { $('hist').classList.add('hidden'); return; }
+    if (d.hf) { histFilter = d.hf; return showHist(); }
+    if (d.tab) { tab = d.tab; if (tab !== 'map' && window.City3D) City3D.hide(); render(); $('view').scrollTop = 0; return; }
     if (d.speed != null) return setSpeed(+d.speed);
     if (d.build) { r = Sim.buildAny(s, d.build); if (r.ok) toast(Sim.BUILDINGS[d.build].icon + ' ' + Sim.BUILDINGS[d.build].name + ' construída!'); }
+    else if (d.evolve) { r = Sim.evolve(s, d.evolve); if (r.ok) toast('⬆ ' + r.fromName + ' virou ' + r.toName + '!'); }
     else if (d.demo) { r = Sim.demolishOne(s, d.demo); if (r.ok) toast('Demolido!'); }
     else if (d.amt) { amount = +d.amt; return render(); }
     else if (d.buy) r = Sim.buy(s, d.buy, amount);

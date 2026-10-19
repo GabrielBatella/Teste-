@@ -66,7 +66,28 @@
   // e cada unidade a mais do mesmo tipo custa mais que a anterior (+10% por unidade já existente). A base é 30% maior que a de um prédio privado.
   const PUBLIC_ESC = 0.10, PUBLIC_BASE = 1.3;
   const isPublic = k => !!BUILDINGS[k] && BUILDINGS[k].kind !== 'Privado';
-  const upkeepTotal = (k, n) => { const b = BUILDINGS[k]; return b.kind === 'Privado' ? b.upkeep * n : b.upkeep * PUBLIC_BASE * (n + PUBLIC_ESC * n * (n - 1) / 2); };
+  // uu = "unidades de manutenção" (soma do peso de cada prédio conforme o nível); sem evolução, uu = n
+  const upkeepTotal = (k, n, uu) => { const b = BUILDINGS[k]; if (uu == null) uu = n; return b.kind === 'Privado' ? b.upkeep * uu : b.upkeep * PUBLIC_BASE * (uu + PUBLIC_ESC * uu * (n - 1) / 2); };
+
+  // ---------- Evolução da cidade: cada prédio pode subir até o nível 3 ----------
+  // Capacidade, manutenção e custo de cada nível. A cidade precisa ter gente suficiente para o nível fazer sentido.
+  const MAX_BLEVEL = 3, LV_CAP = [1, 2.4, 5], LV_UP = [1, 1.5, 2.4], LV_COST = [0, 1.3, 2.2], LV_COSTCUM = [0, 1.3, 3.5], LV_POP = [0, 150, 600];
+  const EVO_NAMES = {
+    casa: ['Casa', 'Sobrado', 'Mansão'], predio: ['Prédio', 'Prédio alto', 'Arranha-céu'], condominio: ['Condomínio', 'Condomínio fechado', 'Resort residencial'],
+    loja: ['Comércio', 'Loja de rua', 'Galeria'], mercado: ['Shopping', 'Shopping grande', 'Megashopping'], fazenda: ['Fazenda', 'Fazenda mecanizada', 'Agroindústria'],
+    fabrica: ['Fábrica', 'Complexo industrial', 'Distrito industrial'], tecnologia: ['Polo tecnológico', 'Parque tecnológico', 'Vale tecnológico'],
+    escola: ['Escola', 'Colégio', 'Campus escolar'], universidade: ['Universidade', 'Universidade federal', 'Cidade universitária'],
+    hospital: ['Posto de saúde', 'Hospital', 'Hospital de referência'], policia: ['Delegacia', 'Distrito policial', 'Central de polícia'],
+    bombeiros: ['Bombeiros', 'Quartel dos bombeiros', 'Central de resgate'], parque: ['Parque', 'Parque urbano', 'Parque ecológico'],
+    estadio: ['Estádio', 'Arena', 'Mega arena'], agua: ['Estação de água', 'Estação grande', 'Central de águas'], esgoto: ['Tratamento de esgoto', 'Estação de tratamento', 'Central de saneamento'],
+    solar: ['Energia solar', 'Fazenda solar', 'Usina solar'], eolica: ['Energia eólica', 'Parque eólico', 'Complexo eólico'], carvao: ['Usina a carvão', 'Usina grande', 'Megausina'],
+    filtro: ['Filtros industriais', 'Filtros avançados', 'Torres de purificação'], floresta: ['Reflorestamento', 'Floresta urbana', 'Reserva florestal'], reciclagem: ['Usina de reciclagem', 'Complexo de reciclagem', 'Eco-indústria'],
+  };
+  const levelName = (k, lv) => (EVO_NAMES[k] && EVO_NAMES[k][lv - 1]) || (BUILDINGS[k] && BUILDINGS[k].name) || k;
+  const lvAt = (s, i) => Math.max(1, Math.min(MAX_BLEVEL, (s.lv && s.lv[i]) || 1));
+  const BUILDING_FIELDS = [['housing', '🏠', 'moradores'], ['jobs', '💼', 'empregos'], ['edu', '🎓', 'Educação para ~', 'moradores'], ['health', '🏥', 'Saúde para ~', 'moradores'],
+    ['safety', '🚓', 'Segurança para ~', 'moradores'], ['fire', '🚒', 'Combate incêndios para ~', 'moradores'], ['park', '🌳', 'Lazer para ~', 'moradores'],
+    ['water', '💧', 'Água para ~', 'moradores'], ['sewage', '🚽', 'Esgoto para ~', 'moradores'], ['power', '⚡', 'Energia para ~', 'moradores']];
 
   // ---------- Mundo: países com relação, economia, empréstimos, política e bolsa de valores ----------
   // eco: oscilação da economia do país; mkt: crescimento e risco da bolsa dele
@@ -220,7 +241,7 @@
     ASSETS.forEach(a => { assets[a.key] = newAsset(); });
     return {
       v: 1, seed: seed == null ? (Date.now() | 0) : seed, month: 0, cash: 10000, debt: 0, taxRate: 10,
-      tiles, landBought: 0, pop: 20, happy: 55, assets, mods: {econ: 1, econLeft: 0, upkeep: 1, upkeepLeft: 0},
+      tiles, lv: [], hist: [], histN: 0, landBought: 0, pop: 20, happy: 55, assets, mods: {econ: 1, econLeft: 0, upkeep: 1, upkeepLeft: 0},
       log: ['Bem-vindo, prefeito! Cuide da cidade e faça o dinheiro render.'],
       report: null, over: null, staff: defaultStaff(), staffSeen: {}, staffStats: {errors: 0, cost: 0},
       market: {rate: BASE_RATE, prev: BASE_RATE}, world: newWorld(), lowHappy: 0, goals: {}, netHist: [10000],
@@ -395,7 +416,7 @@
     const lack = a.workers - a.jobs;
     if (lack > 0) out.push({key: 'loja', n: Math.ceil(lack / BUILDINGS.loja.jobs)});
     if (s.pop > 40) [['escola', 150], ['hospital', 250], ['policia', 200], ['parque', 100]].forEach(([k, per]) => {
-      const n = Math.ceil(s.pop / per) - (c[k] || 0);
+      const n = Math.ceil(s.pop / per) - Math.floor(a.u[k] || 0);
       if (n > 0) out.push({key: k, n});
     });
     if (s.pop > 70) {
@@ -430,14 +451,20 @@
     s.tiles.forEach(t => { if (t) c[t] = (c[t] || 0) + 1; });
     return c;
   }
+  // Unidades "efetivas" por tipo: um prédio evoluído vale mais que um básico (capacidade) e custa mais para manter
+  function unitsOf(s) {
+    const u = {}, uu = {};
+    s.tiles.forEach((t, i) => { if (t && BUILDINGS[t]) { const L = lvAt(s, i) - 1; u[t] = (u[t] || 0) + LV_CAP[L]; uu[t] = (uu[t] || 0) + LV_UP[L]; } });
+    return {u, uu};
+  }
 
   // ---------- Terreno: infinito ----------
   const freeTiles = s => s.tiles.reduce((t, x) => t + (x ? 0 : 1), 0);
 
   // Números derivados do estado atual (usados pela simulação e pela interface).
   function analyze(s) {
-    const c = counts(s);
-    const sum = f => { let t = 0; for (const k in c) if (BUILDINGS[k] && BUILDINGS[k][f]) t += BUILDINGS[k][f] * c[k]; return t; };
+    const c = counts(s), {u, uu} = unitsOf(s);
+    const sum = f => { let t = 0; for (const k in u) if (BUILDINGS[k] && BUILDINGS[k][f]) t += BUILDINGS[k][f] * u[k]; return t; };
     const housing = sum('housing');
     const jobs = HALL_JOBS + sum('jobs');
     const workers = s.pop * 0.6;
@@ -462,8 +489,8 @@
     const happy = clamp(25 + 12 * cov.edu + 15 * cov.health + 12 * cov.safety + 8 * cov.park + 25 * empRate
       - pollution + taxEffect - 18 * (1 - cov.power) - 15 * (1 - cov.water) - 10 * (1 - cov.sewage) + joyBonus(s), 0, 100);
     let upkeep = HALL_UPKEEP;
-    for (const k in c) if (BUILDINGS[k]) upkeep += upkeepTotal(k, c[k]);
-    return {c, housing, jobs, workers, employed, empRate, cov, pollution, taxEffect, happy, upkeep, sum,
+    for (const k in c) if (BUILDINGS[k]) upkeep += upkeepTotal(k, c[k], uu[k]);
+    return {c, u, uu, supply: {power: powerSupply, water: waterSupply, sewage: sewageSupply}, demand: {power: powerDemand, water: waterDemand, sewage: sewageDemand}, housing, jobs, workers, employed, empRate, cov, pollution, taxEffect, happy, upkeep, sum,
       powerDeficit: Math.max(0, powerDemand - powerSupply), waterDeficit: Math.max(0, waterDemand - waterSupply),
       sewageDeficit: Math.max(0, sewageDemand - sewageSupply)};
   }
@@ -473,13 +500,13 @@
   // Quanto custa por mês (já com tudo aplicado) manter n unidades de um tipo, e a próxima unidade
   const maintScale = s => FLOW * COST_HARD * pressure(s) * (1 - upkeepCut(s));
   function upkeepInfo(s, k) {
-    const n = counts(s)[k] || 0, f = maintScale(s);
-    return {n, now: upkeepTotal(k, n) * f, next: (upkeepTotal(k, n + 1) - upkeepTotal(k, n)) * f, first: upkeepTotal(k, 1) * f, public: isPublic(k)};
+    const n = counts(s)[k] || 0, uu = unitsOf(s).uu[k] || 0, f = maintScale(s);
+    return {n, now: upkeepTotal(k, n, uu) * f, next: (upkeepTotal(k, n + 1, uu + 1) - upkeepTotal(k, n, uu)) * f, first: upkeepTotal(k, 1, 1) * f, uu, public: isPublic(k)};
   }
   // Resumo dos gastos públicos do governo
   function publicCosts(s) {
     const c = counts(s), rows = [];
-    Object.keys(BUILDINGS).forEach(k => { if (isPublic(k) && c[k]) { const i = upkeepInfo(s, k); rows.push({key: k, n: c[k], total: i.now, next: i.next, first: i.first, extra: i.now - i.first * c[k]}); } });
+    Object.keys(BUILDINGS).forEach(k => { if (isPublic(k) && c[k]) { const i = upkeepInfo(s, k); rows.push({key: k, n: c[k], total: i.now, next: i.next, first: i.first, extra: i.now - i.first * i.uu}); } });
     return {rows, total: rows.reduce((t, r) => t + r.total, 0), extra: rows.reduce((t, r) => t + r.extra, 0)};
   }
 
@@ -487,7 +514,7 @@
     return ASSETS.reduce((t, a) => t + s.assets[a.key].units * s.assets[a.key].price, 0);
   }
   function buildingsValue(s) {
-    return s.tiles.reduce((t, k) => t + (BUILDINGS[k] ? BUILDINGS[k].cost * 0.5 : 0), 0);
+    return s.tiles.reduce((t, k, i) => t + (BUILDINGS[k] ? BUILDINGS[k].cost * 0.5 * (1 + LV_COSTCUM[lvAt(s, i) - 1]) : 0), 0);
   }
   const foreignDebt = s => NEIGHBORS.reduce((t, n) => t + (s.world.owed[n.key] || 0), 0);
   const lentValue = s => s.world.lent.reduce((t, l) => t + l.left * l.monthly, 0);
@@ -503,14 +530,60 @@
     if (s.tiles[idx]) return {ok: false, msg: 'Terreno ocupado.'};
     const price = buildCost(s, type);
     if (s.cash < price) return {ok: false, msg: 'Dinheiro insuficiente.'};
-    s.cash -= price; s.tiles[idx] = type;
+    s.cash -= price; s.tiles[idx] = type; if (s.lv) s.lv[idx] = 1;
     return {ok: true};
   }
   function demolish(s, idx) {
     const k = s.tiles[idx];
     if (s.over || !BUILDINGS[k]) return {ok: false, msg: 'Nada para demolir.'};
-    s.cash += Math.round(BUILDINGS[k].cost * 0.5); s.tiles[idx] = null;
+    s.cash += Math.round(BUILDINGS[k].cost * 0.5 * (1 + LV_COSTCUM[lvAt(s, idx) - 1])); s.tiles[idx] = null; if (s.lv) s.lv[idx] = 1;
     return {ok: true};
+  }
+  // Evolução: o prédio de menor nível desse tipo vira o próximo nível (Casa → Sobrado → Mansão)
+  function evolveInfo(s, k) {
+    const b = BUILDINGS[k];
+    if (!b) return {ok: false, msg: 'Construção inválida.'};
+    let idx = -1, low = MAX_BLEVEL + 1;
+    s.tiles.forEach((t, i) => { if (t === k && lvAt(s, i) < low) { low = lvAt(s, i); idx = i; } });
+    if (idx < 0) return {ok: false, msg: 'Você não tem essa construção.', none: true};
+    if (low >= MAX_BLEVEL) return {ok: false, msg: 'Todas já estão no nível máximo.', max: true, idx, from: low};
+    const to = low + 1, cost = Math.round(buildCost(s, k) * LV_COST[to - 1]), minPop = LV_POP[to - 1];
+    const info = {idx, from: low, to, cost, minPop, fromName: levelName(k, low), toName: levelName(k, to)};
+    if (s.pop < minPop) return {ok: false, msg: `A cidade precisa de ${minPop} habitantes para isso.`, early: true, ...info};
+    return {ok: true, ...info};
+  }
+  function evolve(s, k) {
+    if (s.over) return {ok: false, msg: 'O jogo acabou.'};
+    const i = evolveInfo(s, k);
+    if (!i.ok) return i;
+    if (s.cash < i.cost) return {ok: false, msg: 'Dinheiro insuficiente.', ...i};
+    s.cash -= i.cost; if (!s.lv) s.lv = []; while (s.lv.length < s.tiles.length) s.lv.push(1);
+    s.lv[i.idx] = i.to;
+    return {ok: true, ...i};
+  }
+  // Como uma construção funciona em cada nível (para mostrar na tela): capacidades e quantas casas ela cobre
+  function unitInfo(k, lv) {
+    const b = BUILDINGS[k], m = LV_CAP[(lv || 1) - 1], lines = [];
+    BUILDING_FIELDS.forEach(([f, ico, a, z]) => {
+      if (!b[f]) return;
+      const v = Math.round(b[f] * m);
+      if (f === 'housing') lines.push({ico, v, text: `Abriga ${v} moradores`});
+      else if (f === 'jobs') lines.push({ico, v, text: `${v} empregos`});
+      else lines.push({ico, v, text: `${a}${v} ${z}`, houses: Math.max(1, Math.round(v / BUILDINGS.casa.housing))});
+    });
+    if (b.pollution) lines.push({ico: b.pollution > 0 ? '🌫️' : '🍃', text: `${b.pollution > 0 ? 'Polui' : 'Limpa'} ${Math.round(Math.abs(b.pollution) * m * 10) / 10} do ar`});
+    return {name: levelName(k, lv || 1), lines, main: lines.length ? lines[0].v : 0, upkeep: b.upkeep * LV_UP[(lv || 1) - 1], mult: m};
+  }
+  // Quanto a cidade tem de cada serviço frente ao que o povo precisa (como o painel do SimCity)
+  function coverage(s) {
+    const a = analyze(s), per = Math.max(1, Math.floor(s.pop)), casa = BUILDINGS.casa.housing;
+    const row = (key, icon, label, cap, need, unit) => ({key, icon, label, cap: Math.round(cap), need: Math.round(need), ratio: need > 0 ? Math.min(1, cap / need) : 1, houses: Math.round(cap / casa), unit: unit || 'moradores'});
+    return [
+      row('housing', '🏠', 'Moradia', a.housing, s.pop, 'vagas'),
+      row('edu', '🏫', 'Educação', a.sum('edu'), per), row('health', '🏥', 'Saúde', a.sum('health'), per), row('safety', '🚓', 'Segurança', a.sum('safety'), per),
+      row('fire', '🚒', 'Bombeiros', a.sum('fire'), per), row('park', '🌳', 'Lazer', a.sum('park'), per),
+      row('power', '⚡', 'Energia', a.supply.power, a.demand.power), row('water', '💧', 'Água', a.supply.water, a.demand.water), row('sewage', '🚽', 'Esgoto', a.supply.sewage, a.demand.sewage),
+    ];
   }
 
   // Constrói no primeiro terreno livre (a interface não precisa escolher o lugar).
@@ -521,7 +594,8 @@
   }
   // Demole a construção mais recente desse tipo.
   function demolishOne(s, type) {
-    const idx = s.tiles.lastIndexOf(type);
+    let idx = -1, low = MAX_BLEVEL + 1;
+    s.tiles.forEach((t, i) => { if (t === type && lvAt(s, i) <= low) { low = lvAt(s, i); idx = i; } });
     if (idx < 0) return {ok: false, msg: 'Você não tem essa construção.'};
     return demolish(s, idx);
   }
@@ -560,7 +634,12 @@
   }
   function setTax(s, rate) { s.taxRate = clamp(Math.round(rate), 0, 20); }
 
-  function note(s, text) { s.log.unshift(`Mês ${s.month}: ${text}`); if (s.log.length > 80) s.log.pop(); }
+  function note(s, text) {
+    s.log.unshift(`Mês ${s.month}: ${text}`); if (s.log.length > 80) s.log.pop();
+    if (!s.hist) s.hist = [];
+    s.hist.unshift({m: s.month, t: text}); if (s.hist.length > 600) s.hist.pop();
+    s.histN = (s.histN || 0) + 1;
+  }
   function worldNote(s, text) { s.world.news.unshift(`Mês ${s.month}: ${text}`); if (s.world.news.length > 30) s.world.news.pop(); note(s, text); }
 
   // ---------- Mundo: relações, comércio, empréstimos e política ----------
@@ -639,13 +718,13 @@
     const keys = NEIGHBORS.map(n => n.key), a = keys[Math.floor(worldRand(s) * keys.length)];
     let b = keys[Math.floor(worldRand(s) * keys.length)]; if (b === a) b = keys[(keys.indexOf(a) + 1) % keys.length];
     const A = nb(a), B = nb(b), kind = Math.floor(worldRand(s) * 4);
-    if (kind === 0) return {text: `${A.icon} ${A.name} e ${B.icon} ${B.name} brigaram por causa de comércio e pedem que você escolha um lado.`, left: 6, options: [
+    if (kind === 0) return {text: `${A.icon} ${A.name} e ${B.icon} ${B.name} brigaram por causa de comércio e pedem que você escolha um lado.`, left: 6, total: 6, options: [
       {label: `Apoiar ${A.name}`, rel: {[a]: 8, [b]: -6}}, {label: `Apoiar ${B.name}`, rel: {[a]: -6, [b]: 8}}, {label: 'Ficar neutro', rel: {[a]: -2, [b]: -2}}]};
-    if (kind === 1) return {text: '🌍 Uma conferência internacional pede metas verdes de todos os países.', left: 6, options: [
+    if (kind === 1) return {text: '🌍 Uma conferência internacional pede metas verdes de todos os países.', left: 6, total: 6, options: [
       {label: 'Assinar o acordo (R$ 750)', cash: -750, rel: Object.fromEntries(keys.map(k => [k, 4]))}, {label: 'Recusar', rel: Object.fromEntries(keys.map(k => [k, -3]))}]};
-    if (kind === 2) return {text: `${A.icon} ${A.name} quer construir uma estrada cortando a sua cidade.`, left: 6, options: [
+    if (kind === 2) return {text: `${A.icon} ${A.name} quer construir uma estrada cortando a sua cidade.`, left: 6, total: 6, options: [
       {label: 'Aceitar (ganha R$ 750 de pedágio)', cash: 750, rel: {[a]: 6}}, {label: 'Recusar', rel: {[a]: -4}}]};
-    return {text: `${A.icon} Famílias refugiadas de ${A.name} pedem abrigo na sua cidade.`, left: 6, options: [
+    return {text: `${A.icon} Famílias refugiadas de ${A.name} pedem abrigo na sua cidade.`, left: 6, total: 6, options: [
       {label: 'Acolher (R$ 400)', cash: -400, pop: 12, rel: {[a]: 6}}, {label: 'Recusar', rel: {[a]: -5}}]};
   }
   function answerDilemma(s, idx) {
@@ -706,7 +785,7 @@
     else if (s.month > 12 && s.cash > 3000 && worldRand(s) < 0.06) {
       const cand = NEIGHBORS.filter(n => w.rel[n.key] >= 45), n = cand[Math.floor(worldRand(s) * cand.length)];
       if (n) {
-        w.request = {who: n.key, amount: Math.round((1000 + worldRand(s) * 2000) / 250) * 250, months: 12, rate: 0.01, left: 3};
+        w.request = {who: n.key, amount: Math.round((1000 + worldRand(s) * 2000) / 250) * 250, months: 12, rate: 0.01, left: 3, total: 3};
         worldNote(s, `📨 ${n.name} pediu um empréstimo de ${money(w.request.amount)}.`);
       }
     }
@@ -782,15 +861,15 @@
 
     const taxes = a.employed * 8 * (s.taxRate / 10) * (1 + taxBoost(s)) * FLOW;
     let slots = 0;
-    for (const k in a.c) { const b = BUILDINGS[k]; if (b && b.housing) slots += b.housing * (b.rent || 5) * a.c[k]; }
+    for (const k in a.u) { const b = BUILDINGS[k]; if (b && b.housing) slots += b.housing * (b.rent || 5) * a.u[k]; }
     const rent = (a.housing > 0 ? Math.min(1, s.pop / a.housing) * slots : 0) * FLOW;
     const consumption = a.employed * 12;
     const commerce = Math.min(consumption, a.sum('sales')) * 0.22 * econ * power * trade * FLOW;
     const workerFactor = Math.min(1, a.workers / Math.max(1, a.jobs));
     let industry = 0;
-    for (const k in a.c) {
+    for (const k in a.u) {
       const b = BUILDINGS[k]; if (!b || !b.profit) continue;
-      let p = b.profit * a.c[k];
+      let p = b.profit * a.u[k];
       if (k === 'tecnologia') p *= 0.4 + 0.6 * a.cov.edu;
       industry += (b.needsWorkers ? p * workerFactor * econ * power * trade : p) * FLOW;
     }
@@ -799,7 +878,7 @@
     NEIGHBORS.forEach(n => { if (s.world.treaty[n.key]) exports += s.world.econ[n.key] * (25 + 0.35 * s.pop) * (1 + 0.02 * pw(s, 'diplomata')); });
     const income = (taxes + rent + commerce + industry + exports) * boom;
     let kindUp = {'Serviço': 0, 'Público': 0, 'Ambiente': 0};
-    for (const k in a.c) { const b = BUILDINGS[k]; if (b && kindUp[b.kind] != null) kindUp[b.kind] += upkeepTotal(k, a.c[k]); }
+    for (const k in a.c) { const b = BUILDINGS[k]; if (b && kindUp[b.kind] != null) kindUp[b.kind] += upkeepTotal(k, a.c[k], a.uu[k]); }
     const kindCut = kindUp['Serviço'] * Math.min(0.5, 0.06 * pw(s, 'infra')) + kindUp['Público'] * Math.min(0.5, 0.05 * pw(s, 'social'))
       + kindUp['Ambiente'] * Math.min(0.5, 0.06 * pw(s, 'ambiental'));
     const maint = Math.max(0, (a.upkeep - kindCut) * upk * (1 - upkeepCut(s))) * FLOW * COST_HARD * pressure(s);
@@ -993,6 +1072,32 @@
     }
   }
 
+  // Com a cidade em dia, os construtores reformam: casas viram sobrados e mansões, o hospital cresce, a delegacia atende mais gente...
+  const EVOLVERS = {
+    arquiteto: ['casa', 'predio', 'condominio', 'loja', 'mercado', 'fazenda', 'tecnologia', 'fabrica'],
+    infra: ['agua', 'esgoto', 'solar', 'eolica', 'carvao'],
+    ambiental: ['filtro', 'floresta', 'reciclagem'],
+    social: ['escola', 'universidade', 'hospital', 'policia', 'bombeiros', 'parque', 'estadio'],
+  };
+  function builderEvolves(s, who, pick) {
+    const L = lv(s, who);
+    if (!active(s, who) || L < 3 || s.month % 3 !== 0) return;
+    const a = analyze(s);
+    const want = pick(s, a, L);                                 // o que a cidade está pedindo: se der, reforma esse tipo
+    const maxTo = 1 + Math.floor(L / 3);                        // nível 3 do funcionário libera o nível 2 dos prédios; 6, o nível 3
+    let best = null;
+    EVOLVERS[who].forEach(k => {
+      const i = evolveInfo(s, k);
+      if (i.ok && i.to <= maxTo && (!best || (k === want && best.k !== want) || (best.k !== want && (i.to < best.to || (i.to === best.to && BUILDINGS[k].cost > BUILDINGS[best.k].cost))))) best = {k, ...i};
+    });
+    if (!best) return;
+    const need = best.cost + reserve(s, a) * 1.2 - s.cash;
+    if (need > 0) { const got = liquidateSafe(s, need); if (got > 0) note(s, `${STAFF[who].icon} ${STAFF[who].name} usou ${money(got)} da renda fixa para pagar a reforma.`); }
+    if (s.cash - best.cost < reserve(s, a) * 1.2) return;
+    if (blunder(s, who) && staffRand(s) < 0.5) { note(s, `😅 ${STAFF[who].name} fez uma reforma errada e gastou ${money(lose(s, best.cost * 0.15 + 100))}.`); return; }
+    if (evolve(s, best.k).ok) note(s, `${STAFF[who].icon} ${STAFF[who].name} reformou: ${best.fromName} virou ${best.toName}.`);
+  }
+
   // ----- Investimentos: carteira por grupos, cada nível diversifica mais -----
   const GROUP_ASSETS = {safe: ['cdb', 'cdb_b', 'tesouro', 'cdb_c'], div: ['divid', 'fii'], index: ['etf', 'acoes'], hedge: ['ouro', 'dolar'], world: WORLD_ASSETS, lotto: ['cripto', 'startup']};
   const TARGETS = [
@@ -1178,6 +1283,7 @@
     builderActs(s, 'infra', pickInfra, 1 + (lv(s, 'infra') >= 5 ? 1 : 0), 3500 + 1000 * lv(s, 'infra'));
     builderActs(s, 'ambiental', pickGreen, 1, 3000 + 600 * lv(s, 'ambiental'));
     builderActs(s, 'social', pickSocial, 1 + (lv(s, 'social') >= 5 ? 1 : 0), 4000 + 1000 * lv(s, 'social'));
+    builderEvolves(s, 'arquiteto', pickCity); builderEvolves(s, 'infra', pickInfra); builderEvolves(s, 'ambiental', pickGreen); builderEvolves(s, 'social', pickSocial);
   }
 
   function money(v) {
@@ -1202,6 +1308,9 @@
       if (!s.world) s.world = newWorld();
       NEIGHBORS.forEach(n => { const w = s.world; if (w.econ[n.key] == null) { w.econ[n.key] = 1; w.rel[n.key] = 50; w.treaty[n.key] = false; w.owed[n.key] = 0; w.giftCd[n.key] = 0; } });
       if (!s.market) s.market = {rate: BASE_RATE, prev: BASE_RATE};
+      if (!s.lv) s.lv = [];
+      if (!s.hist) s.hist = s.log.map(l => { const m = /^Mês (\d+): (.*)$/.exec(l); return m ? {m: +m[1], t: m[2]} : {m: s.month, t: l}; });
+      if (s.histN == null) s.histN = 0;
       return s;
     } catch (e) { return null; }
   }
@@ -1211,5 +1320,5 @@
     loanRate, loanLimit, hire, fire, setAuto, recommend, recCity, recInfra, recGreen, recSocial, needs, advice, hint,
     picks: {city: pickCity, infra: pickInfra, green: pickGreen, social: pickSocial, asset: pickAsset, group: bestGroup}, TARGETS, freeTiles, buildCost, SKILLS, LOT_SIZE, GIFT_COST, TREATY_COST, TREATY_UPKEEP, FLOW, WORLD_ASSETS, LOAN_LIMIT, OVERDRAFT_LIMIT,
     worldInfo, worldFactor, gift, signTreaty, cancelTreaty, borrowForeign, repayForeign, answerRequest, answerDilemma, foreignDebt, lentValue, foreignRate, foreignLimit,
-    newGame, analyze, build, buildAny, demolish, demolishOne, counts, buy, sell, borrow, repay, setTax, step, netWorth, holdingsValue, money, serialize, load};
+    evolve, evolveInfo, unitInfo, coverage, levelName, EVO_NAMES, LV_POP, MAX_BLEVEL, newGame, analyze, build, buildAny, demolish, demolishOne, counts, buy, sell, borrow, repay, setTax, step, netWorth, holdingsValue, money, serialize, load};
 });

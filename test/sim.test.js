@@ -1252,3 +1252,93 @@ test('mesmo com a equipe certa o jogo continua devagar', () => {
   assert.ok(sem < 700, 'em 20 anos a cidade sem equipe ainda é pequena: ' + sem);
   assert.ok(com < sem * 1.5, `a equipe certa não dá um salto enorme: ${com} x ${sem}`);
 });
+
+// ---------- Evolução, capacidades, histórico e mapa 3D ----------
+test('evoluir: casa vira sobrado e mansão, com custo, população mínima e mais capacidade', () => {
+  const s = rica(90); s.cash = 1e6; s.pop = 100;
+  Sim.buildAny(s, 'casa');
+  assert.equal(Sim.evolveInfo(s, 'casa').early, true, 'cidade pequena demais');
+  assert.equal(Sim.evolve(s, 'casa').ok, false);
+  const h0 = Sim.analyze(s).housing;
+  s.pop = 200;
+  const i = Sim.evolveInfo(s, 'casa');
+  assert.ok(i.ok && i.fromName === 'Casa' && i.toName === 'Sobrado' && i.cost > Sim.buildCost(s, 'casa'));
+  const cash = s.cash; assert.ok(Sim.evolve(s, 'casa').ok); assert.equal(s.cash, cash - i.cost);
+  assert.ok(Sim.analyze(s).housing > h0 + 12, 'sobrado abriga bem mais que uma casa');
+  s.pop = 700; assert.ok(Sim.evolve(s, 'casa').ok);
+  for (let n = 0; n < 12; n++) Sim.evolve(s, 'casa');
+  assert.equal(Sim.evolveInfo(s, 'casa').max, true);
+  assert.equal(Sim.evolve(s, 'casa').ok, false);
+});
+
+test('evoluir um serviço público custa menos manutenção que construir outro igual', () => {
+  const s = rica(91); s.cash = 1e6; s.pop = 700; Sim.buildAny(s, 'hospital');
+  const cap1 = Sim.analyze(s).sum('health');
+  Sim.evolve(s, 'hospital');
+  const evoUp = Sim.upkeepInfo(s, 'hospital').now, cap2 = Sim.analyze(s).sum('health');
+  assert.ok(cap2 > cap1 * 2);
+  const t = rica(91); t.cash = 1e6; t.pop = 700; Sim.buildAny(t, 'hospital'); Sim.buildAny(t, 'hospital');
+  assert.ok(evoUp < Sim.upkeepInfo(t, 'hospital').now, 'evoluir é mais barato que duas unidades');
+  assert.ok(evoUp > Sim.upkeepInfo(rica(91), 'hospital').next, 'mas custa mais que o nível 1');
+});
+
+test('demolir devolve o que foi investido e começa pelo prédio de menor nível', () => {
+  const s = rica(92); s.cash = 1e6; s.pop = 700; Sim.buildAny(s, 'casa'); Sim.buildAny(s, 'casa'); Sim.evolve(s, 'casa');
+  const n0 = s.lv.filter(v => v > 1).length; assert.equal(n0, 1);
+  Sim.demolishOne(s, 'casa');
+  assert.equal(s.lv.filter(v => v > 1).length, 1, 'o evoluído foi mantido');
+  assert.equal(Sim.counts(s).casa, (Sim.counts(Sim.newGame(1)).casa || 0) + 1 + 0);
+});
+
+test('cobertura e capacidade por prédio aparecem como no SimCity', () => {
+  const s = rica(93); s.pop = 300; s.cash = 1e6;
+  const c = Object.fromEntries(Sim.coverage(s).map(r => [r.key, r]));
+  assert.ok(c.edu.need === 300 && c.edu.cap === 0 && c.edu.ratio === 0);
+  Sim.buildAny(s, 'escola');
+  const e = Sim.coverage(s).find(r => r.key === 'edu');
+  assert.equal(e.cap, 150); assert.equal(e.houses, 13, '150 moradores ≈ 13 casas');
+  const u = Sim.unitInfo('casa', 1), u3 = Sim.unitInfo('casa', 3);
+  assert.equal(u.main, 12); assert.ok(u3.main > 4 * u.main && u3.name === 'Mansão');
+  assert.ok(Sim.unitInfo('policia', 1).lines[0].houses >= 1);
+  assert.equal(Sim.unitInfo('fabrica', 1).lines.some(l => l.text.includes('Polui')), true);
+});
+
+test('histórico guarda todos os avisos além dos 80 do dia a dia', () => {
+  const s = rica(94);
+  for (let i = 0; i < 150; i++) { s.month = i; Sim.hire(s, 'analista'); Sim.fire(s, 'analista'); }
+  const s2 = Sim.newGame(5); s2.cash = 1e6; for (let i = 0; i < 300; i++) { s2.month++; Sim.step(s2); if (s2.over) break; }
+  assert.ok(s2.hist.length >= s2.log.length && s2.histN >= s2.hist.length);
+  assert.ok(s2.hist.every(h => typeof h.m === 'number' && typeof h.t === 'string'));
+  const re = Sim.load(Sim.serialize(s2)); assert.equal(re.hist.length, s2.hist.length);
+  const old = JSON.parse(Sim.serialize(s2)); delete old.hist; delete old.histN; delete old.lv;
+  const mig = Sim.load(JSON.stringify(old)); assert.ok(Array.isArray(mig.hist) && Array.isArray(mig.lv));
+});
+
+test('propostas do mundo têm prazo total para a barra de tempo', () => {
+  const s = Sim.newGame(95); s.cash = 1e6; let got = null;
+  for (let i = 0; i < 400 && !got; i++) { Sim.step(s); got = s.world.request || s.world.dilemma; if (got) break; if (s.over) break; }
+  assert.ok(got && got.total >= got.left && got.total > 0);
+});
+
+test('construtor com nível alto reforma prédios sozinho quando há dinheiro', () => {
+  let reformas = 0;
+  for (let k = 0; k < 6; k++) {
+    const s = rica(96 + k); s.pop = 400; s.cash = 3e5;
+    for (let i = 0; i < 20; i++) { s.cash = 3e5; Sim.buildAny(s, 'casa'); }
+    s.cash = 1e7; Sim.hire(s, 'arquiteto'); for (let l = 1; l < 6; l++) Sim.upgrade(s, 'arquiteto'); s.cash = 3e5;
+    for (let m = 0; m < 24 && !s.over; m++) { s.cash = Math.max(s.cash, 2e5); Sim.step(s); }
+    reformas += s.lv.filter(v => v > 1).length;
+  }
+  assert.ok(reformas > 0, 'algum prédio foi reformado');
+});
+
+test('mapa 3D: todo prédio tem desenho em cada nível e a espiral não repete posição', () => {
+  require('../www/city3d.js');
+  const P = globalThis.City3D._parts;
+  Object.keys(Sim.BUILDINGS).concat(['prefeitura']).forEach(k => {
+    assert.ok(P[k], 'desenho de ' + k);
+    for (let lv = 1; lv <= 3; lv++) { const parts = P[k](lv, 12345); assert.ok(parts.length > 0); parts.forEach(p => assert.ok(p.slice(1, 8).every(v => Number.isFinite(v)), `${k} lv${lv}`)); }
+  });
+  const seen = new Set(); for (let i = 0; i < 300; i++) { const [x, z] = globalThis.City3D._spiral(i); seen.add(x + ',' + z); }
+  assert.equal(seen.size, 300);
+});

@@ -13,6 +13,7 @@
     <div class="money"><span class="ico">💰</span><div><b id="s-cash">-</b><small id="s-delta"></small></div></div>
     <div class="pop"><span class="ico">👥</span><b id="s-pop">-</b></div>
     <div class="face" id="s-face">🙂</div>
+    <button id="histbtn" aria-label="Histórico de avisos">📜<b id="histn" class="hidden"></b></button>
     <div class="speed" id="speed">
       <button data-speed="0" aria-label="Pausar">⏸</button><button data-speed="1" aria-label="Jogar">▶</button><button data-speed="2" aria-label="Rápido">⏩</button>
     </div>
@@ -20,6 +21,7 @@
   <main id="view"></main>
   <nav id="tabs">
     <button data-tab="city">🏙️<span>Cidade</span></button>
+    <button data-tab="map">🗺️<span>Mapa</span></button>
     <button data-tab="invest">💰<span>Investir</span></button>
     <button data-tab="fin">🏦<span>Banco</span></button>
     <button data-tab="world">🌍<span>Mundo</span></button>
@@ -28,8 +30,12 @@
   </nav>
 </div>
 <div id="toast" class="hidden"></div>
+<div id="prop" class="hidden"></div>
+<div id="hist" class="hidden"></div>
 <div id="over" class="hidden"></div>
+<script src="vendor/three.min.js"></script>
 <script src="sim.js"></script>
+<script src="city3d.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
