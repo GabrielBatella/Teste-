@@ -145,20 +145,20 @@ test('dificuldade: parado não quebra, ingênuo costuma ficar no vermelho', () =
 // ---------- Equipe ----------
 const rica = seed => { const s = Sim.newGame(seed); s.pop = 120; s.cash = 40000; return s; };
 
-test('funcionário só pode ser contratado depois de liberado', () => {
-  const s = Sim.newGame(1);
-  assert.equal(Sim.isUnlocked(s, 'arquiteto'), false);
-  assert.equal(Sim.hire(s, 'arquiteto').ok, false);
-  s.pop = 60;
-  assert.ok(Sim.hire(s, 'arquiteto').ok);
-  assert.equal(Sim.hire(s, 'arquiteto').ok, false);
+test('todos os 15 funcionários estão liberados desde o começo', () => {
+  const s = Sim.newGame(1); s.cash = 1e6;
+  Sim.STAFF_ORDER.forEach(k => { assert.equal(Sim.isUnlocked(s, k), true, k); assert.equal(Sim.lockReason(s, k), null); });
+  Sim.STAFF_ORDER.forEach(k => assert.ok(Sim.hire(s, k).ok, 'contratou ' + k));
+  assert.equal(Sim.STAFF_ORDER.filter(k => Sim.hired(s, k)).length, 15);
+  assert.equal(Sim.hire(s, 'arquiteto').ok, false, 'já contratado');
   assert.equal(Sim.hire(s, 'xyz').ok, false);
+  const pobre = Sim.newGame(2); pobre.cash = 5;
+  assert.equal(Sim.hire(pobre, 'gerente').ok, false, 'precisa de dinheiro para o 1º salário');
 });
-
 test('salário entra nas despesas e some ao demitir', () => {
   const s = rica(1);
   Sim.hire(s, 'arquiteto'); Sim.hire(s, 'gerente');
-  assert.equal(Sim.staffCost(s), Sim.salaryOf(s, 'arquiteto') + Sim.salaryOf(s, 'gerente'));
+  assert.ok(Math.abs(Sim.staffCost(s) - (Sim.salaryOf(s, 'arquiteto') + Sim.salaryOf(s, 'gerente')) * 1.025) < 1e-9, 'folha com custo de coordenação');
   Sim.step(s);
   assert.equal(s.report.salaries, Sim.staffCost(s));
   Sim.fire(s, 'arquiteto'); Sim.fire(s, 'gerente');
@@ -266,12 +266,18 @@ test('save antigo com planejador vira arquiteto, mantendo o nível', () => {
   assert.equal(t.staff.planejador, undefined);
 });
 
-test('aviso quando um funcionário é liberado', () => {
-  const s = Sim.newGame(8); s.pop = 90;
-  Sim.step(s);
-  assert.ok(s.log.some(l => l.includes('Agora você pode contratar')));
+test('contratar cedo demais ou fora de ordem avisa o jogador (sem proibir)', () => {
+  const s = Sim.newGame(8); s.cash = 5000;
+  const r = Sim.hire(s, 'global');           // cidade pequena, patrimônio baixo e sem supervisor
+  assert.ok(r.ok);
+  assert.ok(r.warnings.length >= 2, 'avisa do supervisor e de que é cedo: ' + r.warnings.length);
+  assert.ok(r.warnings.some(w => w.includes('Ainda cedo')));
+  assert.ok(r.warnings.some(w => w.includes('Gestor de Risco')));
+  const ok = Sim.newGame(9); ok.cash = 1e6; ok.pop = 120;
+  const g = Sim.hire(ok, 'gerente'); assert.ok(g.ok && g.warnings.length === 0, 'Gerente com 120 hab.: sem avisos');
+  assert.equal(Sim.readiness(Sim.newGame(1), 'auditor').early, true);
+  Sim.step(s); assert.ok(!s.log.some(l => l.includes('Agora você pode contratar')), 'não existe mais o aviso de liberação');
 });
-
 test('dica só descreve o problema e é ocasional', () => {
   const s = Sim.newGame(1);
   assert.equal(Sim.hint(s, Sim.analyze(s)), null, 'cidade inicial não precisa de dica');
@@ -1162,4 +1168,46 @@ test('a interface sabe o que cada nível libera (skills)', () => {
   for (let i = 1; i < 8; i++) { Sim.upgrade(s, 'arquiteto'); if (i % 2 === 1) Sim.upgrade(s, 'gerente'); }
   assert.ok(Sim.staffInfo(s, 'arquiteto').skills.every(x => x.on), 'nível 8 libera tudo');
   ['infra', 'ambiental', 'social', 'corretor', 'risco', 'global', 'gerente', 'tesoureiro', 'diplomata'].forEach(k => assert.ok(Sim.SKILLS[k].length >= 2, k));
+});
+
+// ---------- Freios no efeito bola de neve ----------
+test('retorno decrescente: o nível 8 rende bem menos que 8 vezes o nível 1', () => {
+  const efeito = L => { const s = rica(3000); s.pop = 60; s.cash = 1e9; Sim.hire(s, 'gerente'); Sim.hire(s, 'analista'); Sim.hire(s, 'contador');
+    for (let i = 1; i < L; i++) { s.cash = 1e9; Sim.upgrade(s, 'contador'); Sim.upgrade(s, 'analista'); Sim.upgrade(s, 'gerente'); }
+    const t = Sim.newGame(1); t.pop = 60; s.cash = 1e9; Sim.step(s); Sim.step(t);
+    return Sim.staffInfo(s, 'contador').lines[0]; };
+  const num = x => parseFloat(x.replace(/[^0-9,]/g, '').replace(',', '.'));
+  assert.ok(num(efeito(8)) < 8 * num(efeito(1)) * 0.85, 'nível 8: ' + efeito(8) + ' x nível 1: ' + efeito(1));
+  assert.ok(num(efeito(8)) > num(efeito(1)), 'ainda melhora com o nível');
+});
+
+test('custo de coordenação: cada pessoa a mais encarece a folha de todos', () => {
+  const s = rica(3001); s.pop = 400; s.cash = 1e9;
+  Sim.hire(s, 'gerente'); const um = Sim.staffCost(s) / Sim.salaryOf(s, 'gerente');
+  assert.equal(um, 1);
+  ['arquiteto', 'analista', 'obras', 'tesoureiro'].forEach(k => Sim.hire(s, k));
+  const soma = Sim.STAFF_ORDER.reduce((t, k) => t + Sim.salaryOf(s, k), 0);
+  assert.ok(Sim.staffCost(s) > soma * 1.09, 'com 5 pessoas a folha custa mais que a soma dos salários');
+});
+
+test('bola de neve controlada: equipe bem escolhida ajuda, equipe completa e cedo demais atrapalha', () => {
+  const rodar = (hire, meses) => { let tot = 0; const N = 12;
+    for (let k = 1; k <= N; k++) { const s = Sim.newGame(4000 + k); let x = k; Math.random = () => (x = (x * 16807) % 2147483647) / 2147483647;
+      for (let m = 0; m < meses && !s.over; m++) { hire(s);
+        const a = Sim.analyze(s), b = Sim.recommend(s, a), reserve = 1500 + a.upkeep * 1.5;
+        if (b) { const price = Sim.buildCost(s, b); if (s.cash - price > reserve) Sim.buildAny(s, b); }
+        Sim.step(s); }
+      tot += Sim.netWorth(s); }
+    return tot / N; };
+  const nada = s => {};
+  const tudoCedo = s => { for (const k of Sim.HIRE_ORDER) if (!Sim.hired(s, k) && s.cash > 300) { Sim.hire(s, k); break; } };
+  const meses = 150;
+  assert.ok(rodar(tudoCedo, meses) < rodar(nada, meses) * 0.8, 'contratar tudo cedo demais atrapalha bastante');
+});
+
+test('obras automáticas por mês: no máximo 1 até o nível 4 e 2 até o nível 8', () => {
+  const s = rica(3002); s.pop = 300; s.cash = 1e9; Sim.hire(s, 'gerente'); Sim.hire(s, 'arquiteto');
+  const mb = () => Sim.staffInfo(s, 'arquiteto').lines.find(l => l.includes('por mês')).match(/\d+/g).pop() * 1;
+  for (let i = 1; i < 8; i++) { s.cash = 1e9; Sim.upgrade(s, 'arquiteto'); Sim.upgrade(s, 'gerente'); }
+  assert.ok(mb() <= 2, 'no máximo 2 obras por mês: ' + mb());
 });

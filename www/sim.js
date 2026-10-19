@@ -222,20 +222,34 @@
   const levelOf = (s, k) => hired(s, k) ? (s.staff[k].level || 1) : 0;
   const salaryAt = (k, lvl) => Math.round(STAFF[k].salary * SALARY_MULT[lvl - 1] * FLOW);
   const salaryOf = (s, k) => hired(s, k) ? salaryAt(k, levelOf(s, k)) : 0;
-  function staffCost(s) { return STAFF_ORDER.reduce((t, k) => t + salaryOf(s, k), 0); }
-  // Por que ainda não dá para contratar (null = dá)
-  function lockReason(s, k) {
+  // Custo de coordenação: quanto maior a equipe, mais cara a folha (+2,5% por pessoa a mais)
+  function staffCost(s) {
+    const n = STAFF_ORDER.filter(k => hired(s, k)).length;
+    return STAFF_ORDER.reduce((t, k) => t + salaryOf(s, k), 0) * (n > 1 ? 1 + 0.025 * (n - 1) : 1);
+  }
+  // Todos estão liberados desde o começo: quem decide é o jogador. Os campos pop/nw dizem a partir de quando compensa.
+  function lockReason(s, k) { return null; }
+  function readiness(s, k) {
     const f = STAFF[k], need = [];
     if (f.pop && s.pop < f.pop) need.push(`${f.pop} habitantes`);
     if (f.nw && netWorth(s) < f.nw) need.push(`patrimônio de ${money(f.nw)}`);
-    return need.length ? 'Precisa de: ' + need.join(' e ') : null;
+    return need.length
+      ? {early: true, text: `Ainda cedo: ${f.name} só compensa a partir de uns ${need.join(' e ')}. Antes disso o salário pesa mais que o ganho.`}
+      : {early: false, text: null};
+  }
+  // Tudo que o jogador deveria ler antes de contratar
+  function hireWarnings(s, k) {
+    const out = [], o = orderWarning(s, k), r = readiness(s, k);
+    if (o) out.push(o);
+    if (r.early) out.push(r.text);
+    return out;
   }
   const isUnlocked = (s, k) => lockReason(s, k) === null;
   // Eficiência: 1 = dá conta da cidade; menos que isso = sobrecarregado
   const capacityOf = (s, k) => CAPACITY[levelOf(s, k) - 1] || 0;
   const efficiency = (s, k) => hired(s, k) ? clamp(capacityOf(s, k) / Math.max(1, s.pop), 0.25, 1) : 0;
   // Bônus de time completo: +4% para cada colega da mesma área contratado
-  const teamBonus = (s, k) => 1 + 0.04 * (STAFF_ORDER.filter(x => STAFF[x].area === STAFF[k].area && hired(s, x)).length - 1);
+  const teamBonus = (s, k) => 1 + TEAM_BONUS * (STAFF_ORDER.filter(x => STAFF[x].area === STAFF[k].area && hired(s, x)).length - 1);
   // "Nível efetivo": nível × eficiência × bônus de time (é o que vira efeito no jogo)
   // Supervisão: o supervisor (mentor) precisa estar contratado e ter pelo menos metade do nível dela
   function supervision(s, k) {
@@ -252,7 +266,9 @@
   }
   const nextInOrder = s => HIRE_ORDER.find(k => !hired(s, k)) || null;
   // "Nível efetivo": nível × eficiência × bônus de time × supervisão (é o que vira efeito no jogo)
-  const pw = (s, k) => hired(s, k) ? levelOf(s, k) * efficiency(s, k) * teamBonus(s, k) * supervision(s, k).f : 0;
+  // Retorno decrescente: o nível 8 não rende 8 vezes o nível 1 (freia o efeito bola de neve)
+  const LV_POW = 0.9, TEAM_BONUS = 0.03;
+  const pw = (s, k) => hired(s, k) ? Math.pow(levelOf(s, k), LV_POW) * efficiency(s, k) * teamBonus(s, k) * supervision(s, k).f : 0;
   // Nível usado nos efeitos e nas habilidades: sem supervisão, é como se fosse de nível mais baixo
   const lv = (s, k) => hired(s, k) ? Math.max(1, Math.round(levelOf(s, k) * supervision(s, k).f)) : 0;
   // Chance de errar: 30% normalmente, mais se estiver sobrecarregado, menos com Auditor
@@ -273,7 +289,7 @@
   const shockSoftener = s => Math.min(0.6, 0.05 * pw(s, 'risco'));
   const econSoftener = s => Math.min(0.6, 0.06 * pw(s, 'economista'));
   const auditRefund = s => Math.min(0.5, 0.04 * lv(s, 'auditor'));
-  const maxBuilds = s => Math.ceil(lv(s, 'arquiteto') / 3);
+  const maxBuilds = s => Math.ceil(lv(s, 'arquiteto') / 4);
 
   function upgradeCost(s, k) { return hired(s, k) && levelOf(s, k) < MAX_LEVEL ? TRAIN_COST[levelOf(s, k) - 1] : null; }
   function upgrade(s, k) {
@@ -322,7 +338,7 @@
     if (why) return {ok: false, msg: why + '.'};
     if (s.cash < STAFF[k].salary) return {ok: false, msg: 'Dinheiro insuficiente para o 1º salário.'};
     s.staff[k] = {hired: true, auto: true, level: 1};
-    return {ok: true, warn: orderWarning(s, k)};
+    return {ok: true, warn: orderWarning(s, k), warnings: hireWarnings(s, k)};
   }
   function fire(s, k) {
     if (!hired(s, k)) return {ok: false, msg: 'Não está contratado.'};
@@ -839,9 +855,6 @@
 
     GOALS.forEach(g => { if (!s.goals[g.id] && g.test(s)) { s.goals[g.id] = s.month; note(s, `🏆 Meta cumprida: ${g.text}!`); } });
 
-    STAFF_ORDER.forEach(k => {
-      if (!hired(s, k) && !s.staffSeen[k] && isUnlocked(s, k)) { s.staffSeen[k] = true; note(s, `👔 Agora você pode contratar: ${STAFF[k].name}!`); }
-    });
 
     s.lowHappy = s.pop > 0 && s.happy < 15 ? s.lowHappy + 1 : 0;
     if (s.cash < -OVERDRAFT_LIMIT) s.over = {title: 'Falência!', text: 'A prefeitura quebrou: dívidas demais e nenhum caixa.'};
@@ -1175,7 +1188,7 @@
   }
 
   return {COLS, ROWS: START_ROWS, HALL, BUILDINGS, ASSETS, SAFE_ASSETS, RISKY_ASSETS, FIXED_ASSETS, BASE_RATE, assetYield, GOALS, STAFF, STAFF_ORDER, SALARY_ORDER, AREAS, MAX_LEVEL, NEIGHBORS,
-    hired, active, levelOf, isUnlocked, lockReason, supervision, orderWarning, nextInOrder, HIRE_ORDER, DIFFICULTY, COST_HARD, EVENT_HARD, staffCost, salaryOf, efficiency, errorChance, staffInfo, upgrade, upgradeCost, teamBonus,
+    hired, active, levelOf, isUnlocked, lockReason, supervision, orderWarning, readiness, hireWarnings, nextInOrder, HIRE_ORDER, DIFFICULTY, COST_HARD, EVENT_HARD, staffCost, salaryOf, efficiency, errorChance, staffInfo, upgrade, upgradeCost, teamBonus,
     loanRate, loanLimit, hire, fire, setAuto, recommend, recCity, recInfra, recGreen, recSocial, needs, advice, hint,
     picks: {city: pickCity, infra: pickInfra, green: pickGreen, social: pickSocial, asset: pickAsset, group: bestGroup}, TARGETS, freeTiles, buildCost, SKILLS, LOT_SIZE, GIFT_COST, TREATY_COST, TREATY_UPKEEP, FLOW, WORLD_ASSETS, LOAN_LIMIT, OVERDRAFT_LIMIT,
     worldInfo, worldFactor, gift, signTreaty, cancelTreaty, borrowForeign, repayForeign, answerRequest, answerDilemma, foreignDebt, lentValue, foreignRate, foreignLimit,
