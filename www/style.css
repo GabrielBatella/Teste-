@@ -118,3 +118,5 @@ nav button{position:relative}
 .steps{display:flex;flex-wrap:wrap;gap:6px}
 .step{background:#0b121a;border-radius:20px;padding:5px 9px;font-size:13px}
 .step.done{color:var(--ok)}.step.next{background:var(--acc);color:#04202a;font-weight:700}.step.wait{color:var(--mut)}
+
+.phase{margin:0}

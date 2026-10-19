@@ -957,9 +957,9 @@ test('save antigo ganha juros, bancos e ações de dividendos', () => {
 // ---------- Ritmo da economia (metade) ----------
 test('receitas e custos mensais foram reduzidos pela metade', () => {
   assert.equal(Sim.FLOW, 0.5);
-  const s = Sim.newGame(1); const a = Sim.analyze(s); s.cash = 1e6; Sim.step(s);
+  const s = Sim.newGame(1); const a = Sim.analyze(s); s.cash = 1e6; const press = Sim.pressure({pop: s.pop, month: 1}); Sim.step(s);
   assert.ok(Math.abs(s.report.taxes - a.employed * 4) < 1e-6, 'imposto por empregado caiu de 8 para 4');
-  assert.ok(Math.abs(s.report.maint - a.upkeep * 0.5 * Sim.COST_HARD) < 1e-6, 'manutenção na metade, mais a dificuldade');
+  assert.ok(Math.abs(s.report.maint - a.upkeep * 0.5 * Sim.COST_HARD * press) < 1e-6, 'manutenção na metade, mais a dificuldade');
   assert.ok(s.report.net > 0, 'a cidade inicial ainda dá lucro');
   assert.ok(s.report.net < 100, 'mas bem menos que antes: ' + s.report.net);
   assert.equal(Sim.DIFFICULTY, 1.3);
@@ -1210,4 +1210,73 @@ test('obras automáticas por mês: no máximo 1 até o nível 4 e 2 até o níve
   const mb = () => Sim.staffInfo(s, 'arquiteto').lines.find(l => l.includes('por mês')).match(/\d+/g).pop() * 1;
   for (let i = 1; i < 8; i++) { s.cash = 1e9; Sim.upgrade(s, 'arquiteto'); Sim.upgrade(s, 'gerente'); }
   assert.ok(mb() <= 2, 'no máximo 2 obras por mês: ' + mb());
+});
+
+// ---------- Progressão: quanto mais evolui, mais pesado e mais demorado ----------
+test('o começo do jogo não é afetado pela progressão', () => {
+  const s = Sim.newGame(1);
+  assert.equal(Sim.sizeF(s), 1);
+  assert.equal(Sim.priceF(s), 1);
+  s.pop = 50; assert.equal(Sim.sizeF(s), 1, 'até 50 habitantes nada muda');
+  assert.equal(Sim.buildCost(s, 'casa'), Sim.BUILDINGS.casa.cost);
+  assert.ok(Sim.pressure(s) < 1.005, 'no mês 0 não há pressão');
+});
+
+test('quanto maior a cidade, mais caras as obras, o treinamento e a manutenção', () => {
+  const mk = pop => { const s = Sim.newGame(2); s.pop = pop; s.cash = 1e9; Sim.hire(s, 'gerente'); return s; };
+  const a = mk(100), b = mk(600), c = mk(3000), d = mk(15000);
+  assert.ok(Sim.buildCost(a, 'escola') <= Sim.buildCost(b, 'escola') && Sim.buildCost(b, 'escola') < Sim.buildCost(c, 'escola') && Sim.buildCost(c, 'escola') < Sim.buildCost(d, 'escola'));
+  assert.ok(Sim.upgradeCost(a, 'gerente') < Sim.upgradeCost(c, 'gerente'));
+  assert.ok(Sim.pressure(a) < Sim.pressure(b) && Sim.pressure(b) < Sim.pressure(c) && Sim.pressure(c) < Sim.pressure(d));
+  assert.ok(Sim.pressure(c) > 1.3 && Sim.pressure(c) < 2, 'cresce devagar, sem explodir: ' + Sim.pressure(c));
+});
+
+test('com os anos os custos sobem um pouco (inflação)', () => {
+  const s = Sim.newGame(3); s.pop = 100;
+  const p0 = Sim.pressure(s); s.month = 120; const p10 = Sim.pressure(s); s.month = 360; const p30 = Sim.pressure(s);
+  assert.ok(p0 < p10 && p10 < p30);
+  assert.ok(p30 / p0 > 1.3 && p30 / p0 < 1.5, 'inflação de ~1,2% ao ano: ' + p30 / p0);
+});
+
+test('fases da cidade: vilarejo até megalópole, com o quanto cada uma pesa', () => {
+  const s = Sim.newGame(4);
+  const nome = pop => { s.pop = pop; return Sim.phaseOf(s); };
+  assert.equal(nome(20).name, 'Vilarejo'); assert.equal(nome(20).n, 1);
+  assert.equal(nome(150).name, 'Cidade pequena');
+  assert.equal(nome(500).name, 'Cidade');
+  assert.equal(nome(1200).name, 'Cidade grande');
+  assert.equal(nome(3000).name, 'Metrópole');
+  assert.equal(nome(9000).name, 'Megalópole'); assert.equal(nome(9000).next, null);
+  assert.equal(nome(150).next, 300);
+  assert.ok(nome(3000).costs > nome(150).costs && nome(3000).prices > nome(150).prices && nome(3000).events > nome(150).events);
+});
+
+test('eventos ruins pesam mais em cidades grandes', () => {
+  const media = pop => { let tot = 0, n = 0;
+    for (let k = 1; k <= 60; k++) { const s = Sim.newGame(7000 + k); s.pop = pop; s.cash = 1e9; const c0 = s.cash;
+      for (let m = 0; m < 80; m++) { const c = s.cash; Sim.step(s); const log = s.log[0] || ''; if (/Enchente/.test(log)) { const mm = log.match(/R\$ ([\d.]+)/); if (mm) { tot += +mm[1].replace(/\./g, ''); n++; } } s.cash = 1e9; s.pop = pop; }
+    } return tot / Math.max(1, n); };
+  assert.ok(media(3000) > media(60) * 1.2, `estrago médio: grande ${media(3000)} x pequena ${media(60)}`);
+});
+
+test('a margem por habitante diminui conforme a cidade cresce', () => {
+  const margem = n => { const s = Sim.newGame(5); s.tiles.fill(null); s.tiles[Sim.HALL] = 'prefeitura'; s.cash = 1e9;
+    for (let i = 0; i < n * 5; i++) Sim.buildAny(s, 'casa'); for (let i = 0; i < n * 4; i++) Sim.buildAny(s, 'loja');
+    s.pop = Sim.analyze(s).housing; s.month = 1; Sim.step(s); return s.report.net / s.pop; };
+  assert.ok(margem(60) < margem(8), `por habitante: grande ${margem(60)} x pequena ${margem(8)}`);
+});
+
+test('mesmo com a equipe certa o jogo continua devagar', () => {
+  const rodar = (comEquipe, meses) => { let tot = 0; const N = 10;
+    for (let k = 1; k <= N; k++) { const s = Sim.newGame(8000 + k); let x = k; Math.random = () => (x = (x * 16807) % 2147483647) / 2147483647;
+      for (let m = 0; m < meses && !s.over; m++) {
+        if (comEquipe) for (const q of ['gerente', 'arquiteto', 'obras']) { if (!Sim.hired(s, q)) { if (s.cash > 5000 + Sim.STAFF[q].salary * 12 && (s.report ? s.report.net : 0) > Sim.STAFF[q].salary * 3) Sim.hire(s, q); break; } }
+        const a = Sim.analyze(s), b = Sim.recommend(s, a), reserve = 1500 + a.upkeep * 1.5;
+        if (b) { const price = Sim.buildCost(s, b); if (s.cash - price > reserve) Sim.buildAny(s, b); }
+        Sim.step(s); }
+      tot += s.pop; }
+    return tot / N; };
+  const meses = 20 * 12, sem = rodar(false, meses), com = rodar(true, meses);
+  assert.ok(sem < 700, 'em 20 anos a cidade sem equipe ainda é pequena: ' + sem);
+  assert.ok(com < sem * 1.5, `a equipe certa não dá um salto enorme: ${com} x ${sem}`);
 });

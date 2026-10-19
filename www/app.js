@@ -107,7 +107,12 @@
           ? 'Faltam: ' + need.map(x => `${x.n} ${Sim.BUILDINGS[x.key].icon}`).join(' · ')
           : 'A cidade está bem atendida. 👍'}<div class="mut" style="margin-top:4px">${team.some(k => Sim.active(s, k)) ? 'Eles constroem sozinhos quando sobra dinheiro.' : 'Decisões automáticas desligadas.'}</div></div>`
       : '';
+    const ph = Sim.phaseOf(s), x2 = v => '×' + v.toFixed(2).replace('.', ',');
+    const phase = `<div class="card asset phase"><div class="top"><span class="ico">${ph.icon}</span>
+      <div class="nm">${ph.name}<small>Fase ${ph.n} de ${Sim.PHASES.length}${ph.next ? ` · a próxima (${ph.nextName}) começa com ${ph.next.toLocaleString('pt-BR')} habitantes` : ' · fase máxima'}</small></div></div>
+      <div class="perks"><span>🏗️ Obras ${x2(ph.prices)}</span><span>🧾 Custos ${x2(ph.costs)}</span><span>⚠️ Eventos ${x2(ph.events)}</span></div></div>`;
     return `<div class="cityview"><div class="side">
+      ${phase}
       ${t ? `<div class="tip"><span class="ico">${t[0]}</span><span>${t[1]}</span></div>` : '<div class="quiet">📰 Nenhuma reclamação por enquanto.</div>'}
       ${planner}
       <div class="card"><h3>🏙️ Sua cidade</h3><div class="sky">${sky}</div></div>
@@ -304,7 +309,8 @@
   function viewNews() {
     const done = Sim.GOALS.filter(g => s.goals[g.id]).length;
     const list = Sim.GOALS.map(g => `<div class="mission ${s.goals[g.id] ? 'done' : ''}"><span class="ico">${s.goals[g.id] ? '✅' : '⬜'}</span>${MISSIONS[g.id] || g.text}</div>`).join('');
-    return `<div class="card"><h3>🎚️ Dificuldade: ${Math.round(Sim.DIFFICULTY * 100)}%</h3><div class="mut" style="font-size:14px">Custos da cidade e eventos ruins mais pesados. A equipe só ajuda se for contratada na ordem certa.</div></div>
+    return `<div class="card"><h3>🎚️ Dificuldade: ${Math.round(Sim.DIFFICULTY * 100)}%</h3><div class="mut" style="font-size:14px">Custos da cidade e eventos ruins mais pesados. A equipe só ajuda se for contratada na ordem e na hora certas.</div></div>
+      <div class="card"><h3>📈 O jogo é progressivo</h3><div class="mut" style="font-size:14px">Quanto maior a cidade e quanto mais anos passam, mais caras ficam as obras, o treinamento e a manutenção, e mais pesados os eventos. O começo é fácil; depois cada passo exige mais tempo e mais cuidado, mesmo com a equipe certa. Não existe limite de tempo: jogue devagar.</div></div>
       <div class="card"><h3>⭐ Missões (${done}/${Sim.GOALS.length})</h3>${list}</div>
       <div class="btns"><button class="btn red" id="newgame">Recomeçar jogo</button></div>`;
   }

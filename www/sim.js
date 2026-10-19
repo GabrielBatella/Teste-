@@ -20,6 +20,18 @@
   // Custos da cidade 15% maiores; eventos ruins 5% mais frequentes e mais caros (multiplicar tudo por 1,3 quebrava o jogo).
   const DIFFICULTY = 1.3;
   const COST_HARD = 1.15, EVENT_HARD = 1.05;
+  // Progressão: quanto maior a cidade e mais velho o jogo, mais pesado e mais demorado. O começo (até ~50 habitantes) não muda.
+  const SIZE_K = 0.25, YEAR_K = 0.012;
+  const sizeF = s => 1 + SIZE_K * Math.log(1 + Math.max(0, s.pop - 50) / 300);   // cresce devagar com o tamanho
+  const yearsF = s => 1 + YEAR_K * (s.month / 12);                                // custos sobem um pouco a cada ano
+  const pressure = s => sizeF(s) * yearsF(s);                                    // pesa na manutenção e nos serviços
+  const priceF = s => 1 + 0.5 * (sizeF(s) - 1);                                  // obras e treinamento ficam mais caros
+  const PHASES = [[0, 'Vilarejo', '🏕️'], [100, 'Cidade pequena', '🏘️'], [300, 'Cidade', '🏙️'], [800, 'Cidade grande', '🌆'], [2000, 'Metrópole', '🌃'], [5000, 'Megalópole', '🌐']];
+  function phaseOf(s) {
+    let i = 0; PHASES.forEach((p, j) => { if (s.pop >= p[0]) i = j; });
+    return {n: i + 1, name: PHASES[i][1], icon: PHASES[i][2], next: PHASES[i + 1] ? PHASES[i + 1][0] : null, nextName: PHASES[i + 1] ? PHASES[i + 1][1] : null,
+      costs: pressure(s), prices: priceF(s), events: sizeF(s)};
+  }
 
   // Campos: housing/rent (moradia), jobs (empregos), sales (capacidade de venda), profit (lucro fixo),
   // needsWorkers, edu/health/safety/park (cobertura de moradores), fire, power/water/sewage (oferta),
@@ -291,7 +303,7 @@
   const auditRefund = s => Math.min(0.5, 0.04 * lv(s, 'auditor'));
   const maxBuilds = s => Math.ceil(lv(s, 'arquiteto') / 4);
 
-  function upgradeCost(s, k) { return hired(s, k) && levelOf(s, k) < MAX_LEVEL ? TRAIN_COST[levelOf(s, k) - 1] : null; }
+  function upgradeCost(s, k) { return hired(s, k) && levelOf(s, k) < MAX_LEVEL ? Math.round(TRAIN_COST[levelOf(s, k) - 1] * priceF(s)) : null; }
   function upgrade(s, k) {
     if (s.over) return {ok: false, msg: 'O jogo acabou.'};
     if (!hired(s, k)) return {ok: false, msg: 'Contrate primeiro.'};
@@ -427,7 +439,7 @@
     const growth = d.fixed ? rate * d.mult : d.drift - RATE_SENSITIVITY * (rate - BASE_RATE) + analystEdge(s, key);
     return {growth, div: d.div || 0, total: growth + (d.div || 0)};
   }
-  const reserve = (s, a) => 1500 + ((a.upkeep + s.pop * BASIC_COST) * FLOW * COST_HARD + staffCost(s)) * 2;
+  const reserve = (s, a) => 1500 + ((a.upkeep + s.pop * BASIC_COST) * FLOW * COST_HARD * pressure(s) + staffCost(s)) * 2;
 
   function counts(s) {
     const c = {};
@@ -485,7 +497,7 @@
   function netWorth(s) { return s.cash + holdingsValue(s) + buildingsValue(s) + lentValue(s) * 0.8 - s.debt - foreignDebt(s); }
 
   // Preço de uma obra: o Arquiteto consegue desconto para toda a cidade
-  const buildCost = (s, type) => Math.round(BUILDINGS[type].cost * (1 - buildDiscount(s)));
+  const buildCost = (s, type) => Math.round(BUILDINGS[type].cost * (1 - buildDiscount(s)) * priceF(s));
   function build(s, idx, type) {
     const b = BUILDINGS[type];
     if (s.over) return {ok: false, msg: 'O jogo acabou.'};
@@ -711,7 +723,7 @@
   // ---------- Eventos ----------
   const EVENTS = [
     {w: () => 2, run(s) {
-      const d = Math.round((1500 + mulberry(s) * 2500) * FLOW * EVENT_HARD); s.cash -= d; note(s, `🌊 Enchente! Reparos custaram ${money(d)}.`);
+      const d = Math.round((1500 + mulberry(s) * 2500) * FLOW * EVENT_HARD * sizeF(s)); s.cash -= d; note(s, `🌊 Enchente! Reparos custaram ${money(d)}.`);
     }},
     {w: () => 3, run(s) {
       const g = Math.round((400 + mulberry(s) * 800) * FLOW); s.cash += g; note(s, `🎉 Festival na cidade! Turismo rendeu ${money(g)}.`);
@@ -735,15 +747,15 @@
     }},
     {w: () => 1, run(s) {
       const a = analyze(s), cut = Math.min(0.8, a.sum('fire') / Math.max(1, s.pop) * 1.2);
-      const d = Math.round((2000 + mulberry(s) * 3000) * (1 - cut) * FLOW * EVENT_HARD); s.cash -= d;
+      const d = Math.round((2000 + mulberry(s) * 3000) * (1 - cut) * FLOW * EVENT_HARD * sizeF(s)); s.cash -= d;
       note(s, `🔥 Incêndio! O estrago custou ${money(d)}${cut > 0 ? ' (os bombeiros ajudaram)' : ''}.`);
     }},
     {w: s => analyze(s).cov.sewage < 0.7 ? 1.5 : 0.3, run(s) {
-      const a = analyze(s), d = Math.round((1500 + mulberry(s) * 2000) * (1 - 0.5 * a.cov.health) * FLOW * EVENT_HARD); s.cash -= d;
+      const a = analyze(s), d = Math.round((1500 + mulberry(s) * 2000) * (1 - 0.5 * a.cov.health) * FLOW * EVENT_HARD * sizeF(s)); s.cash -= d;
       note(s, `🤒 Epidemia! O tratamento custou ${money(d)}.`);
     }},
     {w: s => analyze(s).cov.power < 0.8 ? 1.5 : 0, run(s) {
-      const d = Math.round((800 + mulberry(s) * 1200) * FLOW * EVENT_HARD); s.cash -= d;
+      const d = Math.round((800 + mulberry(s) * 1200) * FLOW * EVENT_HARD * sizeF(s)); s.cash -= d;
       note(s, `🔌 Apagão! Prejuízo de ${money(d)} para as empresas.`);
     }},
   ];
@@ -784,14 +796,14 @@
     for (const k in a.c) { const b = BUILDINGS[k]; if (b && kindUp[b.kind] != null) kindUp[b.kind] += b.upkeep * a.c[k]; }
     const kindCut = kindUp['Serviço'] * Math.min(0.5, 0.06 * pw(s, 'infra')) + kindUp['Público'] * Math.min(0.5, 0.05 * pw(s, 'social'))
       + kindUp['Ambiente'] * Math.min(0.5, 0.06 * pw(s, 'ambiental'));
-    const maint = Math.max(0, (a.upkeep - kindCut) * upk * (1 - upkeepCut(s))) * FLOW * COST_HARD;
+    const maint = Math.max(0, (a.upkeep - kindCut) * upk * (1 - upkeepCut(s))) * FLOW * COST_HARD * pressure(s);
     const salaries = staffCost(s);
     const diplomacy = treatyCount(s) * TREATY_UPKEEP;
     let foreignInterest = 0;
     NEIGHBORS.forEach(n => { foreignInterest += s.world.owed[n.key] * foreignRate(s, n.key); });
     const interest = s.debt * loanRate(s) + foreignInterest;
     const overdraft = s.cash < 0 ? -s.cash * overdraftRate(s) : 0;
-    const basic = s.pop * BASIC_COST * (1 - upkeepCut(s)) * FLOW * COST_HARD;
+    const basic = s.pop * BASIC_COST * (1 - upkeepCut(s)) * FLOW * COST_HARD * pressure(s);
     const expenses = maint + basic + salaries + diplomacy + interest + overdraft;
     s.cash += income - expenses;
 
@@ -1188,7 +1200,7 @@
   }
 
   return {COLS, ROWS: START_ROWS, HALL, BUILDINGS, ASSETS, SAFE_ASSETS, RISKY_ASSETS, FIXED_ASSETS, BASE_RATE, assetYield, GOALS, STAFF, STAFF_ORDER, SALARY_ORDER, AREAS, MAX_LEVEL, NEIGHBORS,
-    hired, active, levelOf, isUnlocked, lockReason, supervision, orderWarning, readiness, hireWarnings, nextInOrder, HIRE_ORDER, DIFFICULTY, COST_HARD, EVENT_HARD, staffCost, salaryOf, efficiency, errorChance, staffInfo, upgrade, upgradeCost, teamBonus,
+    hired, active, levelOf, isUnlocked, lockReason, supervision, orderWarning, readiness, hireWarnings, nextInOrder, HIRE_ORDER, DIFFICULTY, COST_HARD, EVENT_HARD, pressure, priceF, sizeF, phaseOf, PHASES, staffCost, salaryOf, efficiency, errorChance, staffInfo, upgrade, upgradeCost, teamBonus,
     loanRate, loanLimit, hire, fire, setAuto, recommend, recCity, recInfra, recGreen, recSocial, needs, advice, hint,
     picks: {city: pickCity, infra: pickInfra, green: pickGreen, social: pickSocial, asset: pickAsset, group: bestGroup}, TARGETS, freeTiles, buildCost, SKILLS, LOT_SIZE, GIFT_COST, TREATY_COST, TREATY_UPKEEP, FLOW, WORLD_ASSETS, LOAN_LIMIT, OVERDRAFT_LIMIT,
     worldInfo, worldFactor, gift, signTreaty, cancelTreaty, borrowForeign, repayForeign, answerRequest, answerDilemma, foreignDebt, lentValue, foreignRate, foreignLimit,
