@@ -161,3 +161,16 @@ nav button{font-size:20px}
   .speed{gap:3px}.speed button,#histbtn{width:34px;height:34px;font-size:15px;border-radius:10px}
   .money b,.pop b{font-size:16px}header .ico{font-size:20px}
 }
+
+/* capacidade em quadradinhos: cada quadrado = o que uma casa atende (12 moradores) */
+.caps{margin-top:8px;display:flex;flex-direction:column;gap:3px}
+.cap{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--mut)}
+.sq{display:inline-flex;flex-wrap:wrap;gap:2px;align-items:center;justify-content:flex-end;max-width:58%}
+.sq i{display:block;width:7px;height:7px;border-radius:2px;background:var(--acc)}
+.sq b{font-size:10px;color:var(--mut);margin-left:2px}
+.tiersq{display:flex;gap:6px;margin-top:8px}
+.tiersq>div{flex:1;min-width:0;background:#0b121a;border-radius:8px;padding:4px 6px;display:flex;flex-direction:column;gap:3px}
+.tiersq small{font-size:10px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tiersq .sq{justify-content:flex-start;max-width:100%}.tiersq .sq i{width:5px;height:5px;background:#4a6a8a}
+.tiersq .has{outline:1px solid var(--acc)}.tiersq .has .sq i{background:var(--acc)}
+.legendsq{font-size:12px;color:var(--mut);margin:4px 0 0}

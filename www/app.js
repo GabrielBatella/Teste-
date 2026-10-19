@@ -139,13 +139,15 @@
     return n;
   }
   const num = v => v.toLocaleString('pt-BR');
+  // quadradinhos: cada um vale o que uma casa atende (12 moradores)
+  const sq = n => { const m = Math.min(n, 12); return `<span class="sq">${'<i></i>'.repeat(m)}${n > m ? `<b>+${n - m}</b>` : ''}</span>`; };
   function buildCard(k, c) {
     const b = Sim.BUILDINGS[k], n = c[k] || 0, price = Sim.buildCost(s, k), u = Sim.upkeepInfo(s, k);
     const upl = u.public ? `<div class="mut" style="font-size:13px;margin-top:6px">🏛️ Serviço público: custa ${M(Math.round(u.now))}/mês ao governo${n ? ` · a próxima unidade soma +${M(Math.round(u.next))}/mês` : ` · a 1ª custa ${M(Math.round(u.next))}/mês`}</div>` : '';
     const lc = levelCounts(k), info = Sim.unitInfo(k, 1);
-    const caps = info.lines.map(l => `<span>${l.ico} ${l.text}${l.houses ? ` (≈ ${l.houses} ${l.houses === 1 ? 'casa' : 'casas'})` : ''}</span>`).join('');
-    const tiers = info.main ? `<div class="tiers">${[1, 2, 3].map(L => `<span class="${lc[L - 1] ? 'has' : ''}">${Sim.levelName(k, L)}<b>${num(Sim.unitInfo(k, L).main)}</b></span>`).join('')}</div>` : '';
-    const made = lc[1] + lc[2] ? `<div class="mut" style="font-size:13px;margin-top:6px">Você tem: ${[1, 2, 3].filter(L => lc[L - 1]).map(L => `${lc[L - 1]} × ${Sim.levelName(k, L)}`).join(' · ')}</div>` : '';
+    const caps = info.lines.map(l => l.houses ? `<div class="cap"><span>${l.ico} ${l.text.replace(' para ~', ': ')}</span>${sq(l.houses)}</div>` : l.ico === '🏠' ? `<div class="cap"><span>${l.ico} ${l.text}</span>${sq(Math.round(l.v / Sim.BUILDINGS.casa.housing))}</div>` : `<div class="cap"><span>${l.ico} ${l.text}</span></div>`).join('');
+    const tiers = info.main ? `<div class="tiersq">${[1, 2, 3].map(L => `<div class="${lc[L - 1] ? 'has' : ''}"><small>${Sim.levelName(k, L)}</small>${sq(Math.max(1, Math.round(Sim.unitInfo(k, L).main / (info.lines[0].houses ? Sim.BUILDINGS.casa.housing : Sim.BUILDINGS.casa.housing))))}</div>`).join('')}</div>` : '';
+    const made = lc[1] + lc[2] ? `<div class="mut" style="font-size:12px;margin-top:6px">Você tem: ${[1, 2, 3].filter(L => lc[L - 1]).map(L => `${lc[L - 1]} × ${Sim.levelName(k, L)}`).join(' · ')}</div>` : '';
     const ev = n ? Sim.evolveInfo(s, k) : null;
     let evo = '';
     if (ev && ev.max) evo = '<div class="mut" style="font-size:13px;margin-top:6px">⭐ Todas já estão no nível máximo.</div>';
@@ -156,7 +158,7 @@
     return `<div class="card asset"><div class="top"><span class="ico">${b.icon}</span>
       <div class="nm">${b.name}<small>${TAGS[k]}</small></div>
       <div class="val">${n}<small>você tem</small></div></div>
-      <div class="perks">${caps}</div>${tiers}${made}${upl}
+      <div class="caps">${caps}</div>${tiers}${made}${upl}
       <div class="btns"><button class="btn" data-build="${k}" ${s.cash < price ? 'disabled' : ''}>Construir ${M(price)}${price < b.cost ? `<small>desconto do Arquiteto (era ${M(b.cost)})</small>` : ''}</button>
       <button class="btn sec" data-demo="${k}" ${n ? '' : 'disabled'}>Demolir</button></div>${evo}
       </div>`;
@@ -169,7 +171,7 @@
         <i><b style="width:${Math.round(r.ratio * 100)}%;background:${col}"></b></i>
         <small class="mut">${r.key === 'housing' ? 'vagas para morar' : `atende ${num(r.cap)} ${r.key === 'power' || r.key === 'water' || r.key === 'sewage' ? 'unidades de consumo' : 'moradores'} (≈ ${num(r.houses)} casas)`}</small></div>`;
     }).join('');
-    return `<div class="card"><h3>📊 Quanto a cidade aguenta</h3>${rows}<div class="mut" style="font-size:13px;margin-top:6px">Cada casa abriga ${Sim.BUILDINGS.casa.housing} moradores. Quando passa da capacidade, o serviço fica fraco e o povo reclama.</div></div>`;
+    return `<div class="card"><h3>📊 Quanto a cidade aguenta</h3>${rows}<div class="mut" style="font-size:13px;margin-top:6px">Cada quadradinho nos cartões vale uma casa (${Sim.BUILDINGS.casa.housing} moradores). Quando passa da capacidade, o serviço fica fraco e o povo reclama.</div></div>`;
   }
 
   const BUILDERS = ['arquiteto', 'infra', 'ambiental', 'social'];

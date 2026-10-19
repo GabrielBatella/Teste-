@@ -440,7 +440,7 @@ test('planejador usa a renda fixa para pagar obras quando falta caixa', () => {
   for (let k = 1; k <= 12; k++) {
     const s = Sim.newGame(200 + k); s.pop = 70; s.cash = 8000;
     for (let i = 0; i < 6; i++) Sim.buildAny(s, 'casa');
-    Sim.hire(s, 'arquiteto'); s.cash = 20000; assert.ok(Sim.buy(s, 'cdb', 6000).ok); s.cash = 3000; s.month = 1;
+    Sim.hire(s, 'arquiteto'); s.cash = 20000; assert.ok(Sim.buy(s, 'cdb', 6000).ok); s.cash = 3000; s.month = 0;
     const antes = s.tiles.filter(Boolean).length;
     Sim.step(s);
     if (s.log.some(l => l.includes('da renda fixa para pagar a obra'))) usou++;
@@ -705,7 +705,7 @@ test('arquiteto continua construindo mesmo sem terreno livre', () => {
   for (let k = 1; k <= 10; k++) {
     const s = Sim.newGame(400 + k); s.cash = 1e6;
     while (Sim.freeTiles(s) > 0) Sim.buildAny(s, 'casa');
-    s.pop = 60; Sim.hire(s, 'arquiteto'); s.cash = 60000; s.month = 1;
+    s.pop = 60; Sim.hire(s, 'arquiteto'); s.cash = 60000; s.month = 0;
     const n = s.tiles.filter(Boolean).length; Sim.step(s);
     if (s.tiles.filter(Boolean).length > n) construiu++;
   }
@@ -1077,7 +1077,7 @@ test('analista global investe em países em alta e sai dos que entram em crise',
     for (let i = 1; i < 5; i++) { s.cash = 5e6; Sim.upgrade(s, 'global'); }
     s.cash = 5e6; s.world.econ.imperio = 1.3; s.world.rel.imperio = 60; Sim.step(s);
     if (s.log.some(l => l.includes('Analista Global investiu'))) comprou++;
-    Sim.buy(s, 'b_ilhas', 3000); s.world.econ.ilhas = 0.7; s.cash = 5e6; Sim.step(s);
+    Sim.buy(s, 'b_ilhas', 3000); s.world.econ.ilhas = 0.7; s.cash = 5e6; Sim.step(s); s.cash = 5e6; Sim.step(s);
     if (s.log.some(l => l.includes('Analista Global saiu'))) saiu++;
   }
   assert.ok(comprou >= 5, 'comprou bolsa em alta: ' + comprou);
@@ -1341,4 +1341,21 @@ test('mapa 3D: todo prédio tem desenho em cada nível e a espiral não repete p
   });
   const seen = new Set(); for (let i = 0; i < 300; i++) { const [x, z] = globalThis.City3D._spiral(i); seen.add(x + ',' + z); }
   assert.equal(seen.size, 300);
+});
+
+test('equipe decide a cada 2 meses; só a emergência do caixa negativo é todo mês', () => {
+  const s = rica(300); s.pop = 120; s.cash = 5e6; Sim.hire(s, 'analista'); Sim.hire(s, 'corretor'); s.month = 0;
+  const notas = []; for (let m = 0; m < 12; m++) { const n = s.log.length; s.cash = 5e6; Sim.step(s); notas.push(s.log.length - n); }
+  const impares = notas.filter((_, i) => i % 2 === 0).reduce((t, x) => t + x, 0), pares = notas.filter((_, i) => i % 2 === 1).reduce((t, x) => t + x, 0);
+  assert.ok(impares > pares, `decisões só em meses alternados: ${impares} x ${pares}`);
+  const g = rica(301); g.pop = 120; Sim.hire(g, 'gerente'); g.month = 1; g.cash = -3000; Sim.step(g);
+  assert.ok(g.cash > -3000 || g.log.some(l => l.includes('Gerente')), 'gerente socorre o caixa mesmo em mês de folga');
+});
+
+test('acontecimentos começam pequenos e crescem com o tamanho da cidade', () => {
+  const perda = pop => { let tot = 0, n = 0;
+    for (let k = 0; k < 200; k++) { const s = Sim.newGame(500 + k); s.pop = pop; s.cash = 1e6; const c0 = s.cash; for (let m = 0; m < 24; m++) { s.cash = 1e6; Sim.step(s); tot += Math.abs(s.cash - 1e6); } n++; }
+    return tot / n; };
+  const peq = perda(20), grande = perda(900);
+  assert.ok(grande > peq * 2, `cidade grande mexe mais no caixa: ${peq} x ${grande}`);
 });

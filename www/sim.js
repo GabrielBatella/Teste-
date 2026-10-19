@@ -25,6 +25,9 @@
   const sizeF = s => 1 + SIZE_K * Math.log(1 + Math.max(0, s.pop - 50) / 300);   // cresce devagar com o tamanho
   const yearsF = s => 1 + YEAR_K * (s.month / 12);                                // custos sobem um pouco a cada ano
   const pressure = s => sizeF(s) * yearsF(s);                                    // pesa na manutenção e nos serviços
+  // Acontecimentos (enchente, festival, turistas, pedidos...) começam pequenos e crescem com o tamanho da cidade
+  const eventRamp = s => Math.max(0.25, Math.min(1, 0.25 + 0.75 * s.pop / 250));
+  const evScale = s => eventRamp(s) * sizeF(s);
   const priceF = s => 1 + 0.5 * (sizeF(s) - 1);                                  // obras e treinamento ficam mais caros
   const PHASES = [[0, 'Vilarejo', '🏕️'], [100, 'Cidade pequena', '🏘️'], [300, 'Cidade', '🏙️'], [800, 'Cidade grande', '🌆'], [2000, 'Metrópole', '🌃'], [5000, 'Megalópole', '🌐']];
   function phaseOf(s) {
@@ -700,14 +703,15 @@
     const keys = NEIGHBORS.map(n => n.key), a = keys[Math.floor(worldRand(s) * keys.length)];
     let b = keys[Math.floor(worldRand(s) * keys.length)]; if (b === a) b = keys[(keys.indexOf(a) + 1) % keys.length];
     const A = nb(a), B = nb(b), kind = Math.floor(worldRand(s) * 4);
+    const v750 = Math.max(100, Math.round(750 * evScale(s) / 50) * 50), v400 = Math.max(50, Math.round(400 * evScale(s) / 50) * 50);
     if (kind === 0) return {text: `${A.icon} ${A.name} e ${B.icon} ${B.name} brigaram por causa de comércio e pedem que você escolha um lado.`, left: 6, total: 6, options: [
       {label: `Apoiar ${A.name}`, rel: {[a]: 8, [b]: -6}}, {label: `Apoiar ${B.name}`, rel: {[a]: -6, [b]: 8}}, {label: 'Ficar neutro', rel: {[a]: -2, [b]: -2}}]};
     if (kind === 1) return {text: '🌍 Uma conferência internacional pede metas verdes de todos os países.', left: 6, total: 6, options: [
-      {label: 'Assinar o acordo (R$ 750)', cash: -750, rel: Object.fromEntries(keys.map(k => [k, 4]))}, {label: 'Recusar', rel: Object.fromEntries(keys.map(k => [k, -3]))}]};
+      {label: `Assinar o acordo (${money(v750)})`, cash: -v750, rel: Object.fromEntries(keys.map(k => [k, 4]))}, {label: 'Recusar', rel: Object.fromEntries(keys.map(k => [k, -3]))}]};
     if (kind === 2) return {text: `${A.icon} ${A.name} quer construir uma estrada cortando a sua cidade.`, left: 6, total: 6, options: [
-      {label: 'Aceitar (ganha R$ 750 de pedágio)', cash: 750, rel: {[a]: 6}}, {label: 'Recusar', rel: {[a]: -4}}]};
+      {label: `Aceitar (ganha ${money(v750)} de pedágio)`, cash: v750, rel: {[a]: 6}}, {label: 'Recusar', rel: {[a]: -4}}]};
     return {text: `${A.icon} Famílias refugiadas de ${A.name} pedem abrigo na sua cidade.`, left: 6, total: 6, options: [
-      {label: 'Acolher (R$ 400)', cash: -400, pop: 12, rel: {[a]: 6}}, {label: 'Recusar', rel: {[a]: -5}}]};
+      {label: `Acolher (${money(v400)})`, cash: -v400, pop: 12, rel: {[a]: 6}}, {label: 'Recusar', rel: {[a]: -5}}]};
   }
   function answerDilemma(s, idx) {
     const d = s.world.dilemma;
@@ -767,7 +771,7 @@
     else if (s.month > 12 && s.cash > 3000 && worldRand(s) < 0.06) {
       const cand = NEIGHBORS.filter(n => w.rel[n.key] >= 45), n = cand[Math.floor(worldRand(s) * cand.length)];
       if (n) {
-        w.request = {who: n.key, amount: Math.round((1000 + worldRand(s) * 2000) / 250) * 250, months: 12, rate: 0.01, left: 3, total: 3};
+        w.request = {who: n.key, amount: Math.max(250, Math.round((1000 + worldRand(s) * 2000) * evScale(s) / 250) * 250), months: 12, rate: 0.01, left: 3, total: 3};
         worldNote(s, `📨 ${n.name} pediu um empréstimo de ${money(w.request.amount)}.`);
       }
     }
@@ -782,7 +786,7 @@
       else if (r < 0.45) { shockCountry(s, n.key, 1.12); w.mods.commerce = 1 + 0.05 * t; w.mods.commerceLeft = 4; worldNote(s, `🚀 Boom em ${n.name}: o comércio com eles aquece por 4 meses.`); }
       else if (r < 0.60) { w.mods.upkeep = 1.05; w.mods.upkeepLeft = 4; worldNote(s, '🛢️ O petróleo subiu no mundo: manutenção 5% mais cara por 4 meses.'); }
       else if (r < 0.75) { NEIGHBORS.forEach(m => addRel(s, m.key, 3)); worldNote(s, '🕊️ Cúpula da paz: todos os países se aproximaram.'); }
-      else if (r < 0.88) { const g = Math.round((500 + mulberry(s) * 1000) * (0.6 + w.rel[n.key] / 100) * FLOW); s.cash += g; worldNote(s, `🧳 Onda de turistas de ${n.name}: você ganhou ${money(g)}.`); }
+      else if (r < 0.88) { const g = Math.round((500 + mulberry(s) * 1000) * (0.6 + w.rel[n.key] / 100) * FLOW * evScale(s)); s.cash += g; worldNote(s, `🧳 Onda de turistas de ${n.name}: você ganhou ${money(g)}.`); }
       else { addRel(s, n.key, -8); worldNote(s, `⚔️ Tensão com ${n.name}: a relação piorou.`); }
     }
   }
@@ -790,10 +794,10 @@
   // ---------- Eventos ----------
   const EVENTS = [
     {w: () => 2, run(s) {
-      const d = Math.round((1500 + mulberry(s) * 2500) * FLOW * EVENT_HARD * sizeF(s)); s.cash -= d; note(s, `🌊 Enchente! Reparos custaram ${money(d)}.`);
+      const d = Math.round((1500 + mulberry(s) * 2500) * FLOW * EVENT_HARD * evScale(s)); s.cash -= d; note(s, `🌊 Enchente! Reparos custaram ${money(d)}.`);
     }},
     {w: () => 3, run(s) {
-      const g = Math.round((400 + mulberry(s) * 800) * FLOW); s.cash += g; note(s, `🎉 Festival na cidade! Turismo rendeu ${money(g)}.`);
+      const g = Math.round((400 + mulberry(s) * 800) * FLOW * evScale(s)); s.cash += g; note(s, `🎉 Festival na cidade! Turismo rendeu ${money(g)}.`);
     }},
     {w: () => 2, run(s) {
       s.mods.econ = 0.75; s.mods.econLeft = 6;
@@ -814,15 +818,15 @@
     }},
     {w: () => 1, run(s) {
       const a = analyze(s), cut = Math.min(0.8, a.sum('fire') / Math.max(1, s.pop) * 1.2);
-      const d = Math.round((2000 + mulberry(s) * 3000) * (1 - cut) * FLOW * EVENT_HARD * sizeF(s)); s.cash -= d;
+      const d = Math.round((2000 + mulberry(s) * 3000) * (1 - cut) * FLOW * EVENT_HARD * evScale(s)); s.cash -= d;
       note(s, `🔥 Incêndio! O estrago custou ${money(d)}${cut > 0 ? ' (os bombeiros ajudaram)' : ''}.`);
     }},
     {w: s => analyze(s).cov.sewage < 0.7 ? 1.5 : 0.3, run(s) {
-      const a = analyze(s), d = Math.round((1500 + mulberry(s) * 2000) * (1 - 0.5 * a.cov.health) * FLOW * EVENT_HARD * sizeF(s)); s.cash -= d;
+      const a = analyze(s), d = Math.round((1500 + mulberry(s) * 2000) * (1 - 0.5 * a.cov.health) * FLOW * EVENT_HARD * evScale(s)); s.cash -= d;
       note(s, `🤒 Epidemia! O tratamento custou ${money(d)}.`);
     }},
     {w: s => analyze(s).cov.power < 0.8 ? 1.5 : 0, run(s) {
-      const d = Math.round((800 + mulberry(s) * 1200) * FLOW * EVENT_HARD * sizeF(s)); s.cash -= d;
+      const d = Math.round((800 + mulberry(s) * 1200) * FLOW * EVENT_HARD * evScale(s)); s.cash -= d;
       note(s, `🔌 Apagão! Prejuízo de ${money(d)} para as empresas.`);
     }},
   ];
@@ -914,7 +918,7 @@
     }
     worldStep(s);
 
-    staffActs(s);
+    staffActs(s, s.month % 2 === 1);   // a equipe decide a cada 2 meses (só emergências todo mês)
 
     // Banco cobre o rombo vendendo investimentos
     if (s.cash < 0) {
@@ -1032,7 +1036,7 @@
 
   // Cada construtor cuida de uma área e usa renda fixa se faltar caixa
   function builderActs(s, who, pick, maxN, capCost) {
-    if (!active(s, who) || !(s.month % 2 === 0 || efficiency(s, who) >= 0.5)) return;
+    if (!active(s, who)) return;
     for (let i = 0; i < maxN; i++) {
       const a = analyze(s), k = pick(s, a, lv(s, who));
       if (!k) break;
@@ -1062,7 +1066,7 @@
   };
   function builderEvolves(s, who, pick) {
     const L = lv(s, who);
-    if (!active(s, who) || L < 3 || s.month % 3 !== 0) return;
+    if (!active(s, who) || L < 3 || s.month % 6 !== 1) return;
     const a = analyze(s);
     const want = pick(s, a, L);                                 // o que a cidade está pedindo: se der, reforma esse tipo
     const maxTo = 1 + Math.floor(L / 3);                        // nível 3 do funcionário libera o nível 2 dos prédios; 6, o nível 3
@@ -1119,7 +1123,8 @@
     return best;
   }
 
-  function staffActs(s) {
+  function staffActs(s, full) {
+    if (full == null) full = true;
     if (!s.staffStats) s.staffStats = {errors: 0, cost: 0};
 
     // ===== Finanças =====
@@ -1134,7 +1139,7 @@
           note(s, `🏦 Gerente pegou ${money(amt)} emprestado ${who} (juros de ${rate2(src.rate)} ao mês) para evitar o vermelho.`);
           if (blunder(s, 'gerente')) note(s, `😅 Gerente errou os papéis do empréstimo e pagou ${money(lose(s, amt * 0.03 + 100))} de taxas a mais.`);
         }
-      } else {
+      } else if (full) {
         const list = debts(s).sort((p, q) => q.rate - p.rate), top = L >= 3 ? list[0] : list.find(d => d.src === 'banco');
         const spare = s.cash - reserve(s, analyze(s)) - 4000;
         if (top && spare >= 250) {
@@ -1145,6 +1150,7 @@
         }
       }
     }
+    if (!full) return;
     if (active(s, 'tesoureiro')) {
       const L = lv(s, 'tesoureiro');
       // Troca dívida cara do banco por dívida barata de outro país (refinanciar)
