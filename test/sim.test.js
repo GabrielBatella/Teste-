@@ -1359,3 +1359,24 @@ test('acontecimentos começam pequenos e crescem com o tamanho da cidade', () =>
   const peq = perda(20), grande = perda(900);
   assert.ok(grande > peq * 2, `cidade grande mexe mais no caixa: ${peq} x ${grande}`);
 });
+
+test('treinamento leva tempo: paga ao começar, sobe de nível só depois de alguns meses e um por vez', () => {
+  const s = rica(310); s.cash = 1e6; s.pop = 100; Sim.hire(s, 'arquiteto');
+  const c0 = s.cash, r = Sim.train(s, 'arquiteto');
+  assert.ok(r.ok && r.months === Sim.trainMonths(1) && r.to === 2);
+  assert.ok(s.cash < c0, 'o treinamento foi pago na hora');
+  assert.equal(Sim.levelOf(s, 'arquiteto'), 1, 'ainda no nível 1');
+  assert.equal(Sim.train(s, 'arquiteto').ok, false, 'não treina duas vezes ao mesmo tempo');
+  assert.ok(Sim.staffInfo(s, 'arquiteto').training.left === r.months);
+  for (let m = 1; m < r.months; m++) { s.cash = 1e6; Sim.step(s); assert.equal(Sim.levelOf(s, 'arquiteto'), 1, 'mês ' + m); }
+  s.cash = 1e6; Sim.step(s);
+  assert.equal(Sim.levelOf(s, 'arquiteto'), 2, 'terminou o treinamento');
+  assert.equal(Sim.staffInfo(s, 'arquiteto').training, null);
+  assert.ok(s.log.some(l => l.includes('terminou o treinamento')));
+  assert.ok(Sim.trainMonths(7) > Sim.trainMonths(1), 'níveis altos demoram mais');
+});
+
+test('demitir durante o treinamento perde o treinamento', () => {
+  const s = rica(311); s.cash = 1e6; Sim.hire(s, 'analista'); Sim.train(s, 'analista'); Sim.fire(s, 'analista'); Sim.hire(s, 'analista');
+  assert.equal(Sim.staffInfo(s, 'analista').training, null); assert.equal(Sim.levelOf(s, 'analista'), 1);
+});

@@ -297,9 +297,11 @@
     if (on) {
       const inf = Sim.staffInfo(s, k), auto = Sim.active(s, k), ef = effText(inf.efficiency);
       sub = `Nível ${inf.level}/${Sim.MAX_LEVEL} · ${M(inf.salary)} por mês`;
+      const tr = inf.training;
       const train = inf.nextCost == null
         ? '<button class="btn sec" disabled>⭐ Nível máximo</button>'
-        : `<button class="btn" data-upgrade="${k}" ${s.cash < inf.nextCost ? 'disabled' : ''}>🎓 Treinar para o nível ${inf.level + 1}<small>${M(inf.nextCost)} agora · salário vira ${M(inf.nextSalary)}/mês</small></button>`;
+        : tr ? `<div class="training"><div class="effhead">🎓 Treinando para o nível ${tr.to}…</div><i><b style="width:${Math.round((1 - tr.left / tr.total) * 100)}%;background:var(--acc)"></b></i><small class="mut">faltam ${tr.left} ${tr.left === 1 ? 'mês' : 'meses'} · enquanto isso ele continua no nível ${inf.level}</small></div>`
+        : `<button class="btn" data-upgrade="${k}" ${s.cash < inf.nextCost ? 'disabled' : ''}>🎓 Treinar para o nível ${inf.level + 1}<small>${M(inf.nextCost)} agora · leva ${inf.trainMonths} meses · salário vira ${M(inf.nextSalary)}/mês</small></button>`;
       body = `<div class="eff"><div class="effhead"><span>${ef[0]} ${ef[1]}</span></div>
           <i><b style="width:${Math.round(inf.efficiency * 100)}%;background:${ef[2]}"></b></i>
           <div class="mut" style="font-size:12px">Aguenta uma cidade de até ${inf.capacity.toLocaleString('pt-BR')} habitantes (a sua tem ${Math.floor(s.pop).toLocaleString('pt-BR')}).</div></div>
@@ -435,7 +437,7 @@
     else if (d.sellall) r = Sim.sell(s, d.sellall, 'all');
     else if (d.tax) { Sim.setTax(s, s.taxRate + +d.tax); r = {ok: true}; }
     else if (d.hire) { const w = Sim.hireWarnings(s, d.hire); if (w.length && !confirm('⚠️ ' + w.join('\n\n') + '\n\nContratar mesmo assim?')) return; r = Sim.hire(s, d.hire); if (r.ok) toast(Sim.STAFF[d.hire].icon + ' ' + Sim.STAFF[d.hire].name + ' contratado!'); }
-    else if (d.upgrade) { r = Sim.upgrade(s, d.upgrade); if (r.ok) toast('🎓 ' + Sim.STAFF[d.upgrade].name + ' subiu para o nível ' + Sim.levelOf(s, d.upgrade) + '!'); }
+    else if (d.upgrade) { r = Sim.train(s, d.upgrade); if (r.ok) toast('🎓 ' + Sim.STAFF[d.upgrade].name + ' começou o treinamento: ' + r.months + ' meses até o nível ' + r.to + '.'); }
     else if (d.fire) { if (!confirm('Demitir ' + Sim.STAFF[d.fire].name + '? Ele perde o nível.')) return; r = Sim.fire(s, d.fire); if (r.ok) toast('Demitido.'); }
     else if (d.auto) { r = Sim.setAuto(s, d.auto, !Sim.active(s, d.auto)); }
     else if (d.gift) { r = Sim.gift(s, d.gift, Sim.GIFT_COST); if (r.ok) toast('🎁 Presente enviado!'); }

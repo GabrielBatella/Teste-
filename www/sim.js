@@ -306,6 +306,26 @@
     s.cash -= cost; s.staff[k].level = levelOf(s, k) + 1;
     return {ok: true};
   }
+  // Treinamento leva tempo: paga ao começar e só sobe de nível depois de alguns meses (e só um por vez).
+  const trainMonths = L => 4 + 2 * L;
+  function train(s, k) {
+    if (s.over) return {ok: false, msg: 'O jogo acabou.'};
+    if (!hired(s, k)) return {ok: false, msg: 'Contrate primeiro.'};
+    if (s.staff[k].training) return {ok: false, msg: 'Já está em treinamento.'};
+    const cost = upgradeCost(s, k);
+    if (cost == null) return {ok: false, msg: 'Já está no nível máximo.'};
+    if (s.cash < cost) return {ok: false, msg: 'Dinheiro insuficiente para o treinamento.'};
+    const L = levelOf(s, k), months = trainMonths(L);
+    s.cash -= cost; s.staff[k].training = {to: L + 1, left: months, total: months};
+    return {ok: true, months, to: L + 1};
+  }
+  function trainingStep(s) {
+    STAFF_ORDER.forEach(k => {
+      const e = s.staff[k], tr = e && e.hired && e.training;
+      if (!tr) return;
+      if (--tr.left <= 0) { e.level = tr.to; e.training = null; note(s, `🎓 ${STAFF[k].name} terminou o treinamento e chegou ao nível ${e.level}!`); }
+    });
+  }
   const pct = v => Math.round(v * 100) + '%';
   const rate2 = v => (v * 100).toFixed(2).replace('.', ',') + '%';
   // Resumo para a interface
@@ -330,6 +350,7 @@
     }
     const skills = (SKILLS[k] || []).map(([lvl, text]) => ({lvl, text, on: L >= lvl}));
     return {level: L, skills, salary: salaryOf(s, k), efficiency: efficiency(s, k), capacity: capacityOf(s, k), errorChance: errorChance(s, k),
+      training: hired(s, k) && s.staff[k].training ? {...s.staff[k].training} : null, trainMonths: trainMonths(L),
       teamBonus: teamBonus(s, k), lines, nextCost: upgradeCost(s, k), nextSalary: L < MAX_LEVEL ? salaryAt(k, L + 1) : null};
   }
 
@@ -917,6 +938,7 @@
       for (let i = 0; i < EVENTS.length; i++) { if ((r -= ws[i]) < 0) { EVENTS[i].run(s); break; } }
     }
     worldStep(s);
+    trainingStep(s);
 
     staffActs(s, s.month % 2 === 1);   // a equipe decide a cada 2 meses (só emergências todo mês)
 
@@ -1303,7 +1325,7 @@
   }
 
   return {COLS, ROWS: START_ROWS, HALL, BUILDINGS, ASSETS, SAFE_ASSETS, RISKY_ASSETS, FIXED_ASSETS, BASE_RATE, assetYield, STAFF, STAFF_ORDER, SALARY_ORDER, AREAS, MAX_LEVEL, NEIGHBORS,
-    hired, active, levelOf, isUnlocked, lockReason, readiness, hireWarnings, DIFFICULTY, COST_HARD, EVENT_HARD, PUBLIC_ESC, isPublic, upkeepInfo, publicCosts, pressure, priceF, sizeF, phaseOf, PHASES, staffCost, salaryOf, efficiency, errorChance, staffInfo, upgrade, upgradeCost, teamBonus,
+    hired, active, levelOf, isUnlocked, lockReason, readiness, hireWarnings, DIFFICULTY, COST_HARD, EVENT_HARD, PUBLIC_ESC, isPublic, upkeepInfo, publicCosts, pressure, priceF, sizeF, phaseOf, PHASES, staffCost, salaryOf, efficiency, errorChance, staffInfo, upgrade, train, trainMonths, upgradeCost, teamBonus,
     loanRate, loanLimit, hire, fire, setAuto, recommend, recCity, recInfra, recGreen, recSocial, needs, advice, hint,
     picks: {city: pickCity, infra: pickInfra, green: pickGreen, social: pickSocial, asset: pickAsset, group: bestGroup}, TARGETS, freeTiles, buildCost, SKILLS, LOT_SIZE, GIFT_COST, TREATY_COST, TREATY_UPKEEP, FLOW, WORLD_ASSETS, LOAN_LIMIT, OVERDRAFT_LIMIT,
     worldInfo, worldFactor, gift, signTreaty, cancelTreaty, borrowForeign, repayForeign, answerRequest, answerDilemma, foreignDebt, lentValue, foreignRate, foreignLimit,
