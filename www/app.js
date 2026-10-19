@@ -194,15 +194,18 @@
   }
 
   function staffCard(k) {
-    const f = Sim.STAFF[k], on = Sim.hired(s, k), why = Sim.lockReason(s, k), open = why === null;
-    let body = '', sub = `${M(f.salary)} por mês no início`;
+    const f = Sim.STAFF[k], on = Sim.hired(s, k), why = Sim.lockReason(s, k), open = why === null, nth = Sim.HIRE_ORDER.indexOf(k) + 1;
+    const mentor = f.mentor ? Sim.STAFF[f.mentor] : null, warn = !on ? Sim.orderWarning(s, k) : null;
+    let body = '', sub = `${M(Math.round(f.salary * Sim.FLOW))} por mês no início`;
     if (on) {
       const inf = Sim.staffInfo(s, k), auto = Sim.active(s, k), ef = effText(inf.efficiency);
       sub = `Nível ${inf.level}/${Sim.MAX_LEVEL} · ${M(inf.salary)} por mês`;
       const train = inf.nextCost == null
         ? '<button class="btn sec" disabled>⭐ Nível máximo</button>'
         : `<button class="btn" data-upgrade="${k}" ${s.cash < inf.nextCost ? 'disabled' : ''}>🎓 Treinar para o nível ${inf.level + 1}<small>${M(inf.nextCost)} agora · salário vira ${M(inf.nextSalary)}/mês</small></button>`;
-      body = `<div class="eff"><div class="effhead"><span>${ef[0]} ${ef[1]}</span></div>
+      const sp = inf.supervision;
+      body = `<div class="supline ${sp.state === 'ok' ? 'ok' : 'bad'}">${sp.mentor ? (sp.state === 'ok' ? `👤 Supervisor: ${sp.mentorName} ✅` : `⚠️ ${sp.note}`) : '👑 Chefe da equipe: não precisa de supervisor'}</div>
+        <div class="eff"><div class="effhead"><span>${ef[0]} ${ef[1]}</span></div>
           <i><b style="width:${Math.round(inf.efficiency * 100)}%;background:${ef[2]}"></b></i>
           <div class="mut" style="font-size:12px">Aguenta uma cidade de até ${inf.capacity.toLocaleString('pt-BR')} habitantes (a sua tem ${Math.floor(s.pop).toLocaleString('pt-BR')}).</div></div>
         <div class="skills">${inf.skills.map(k2 => `<div class="${k2.on ? 'on' : 'off'}">${k2.on ? '✅' : '🔒 Nível ' + k2.lvl + ':'} ${k2.text}</div>`).join('')}</div>
@@ -211,13 +214,14 @@
         <div class="btns"><button class="btn ${auto ? '' : 'sec'}" data-auto="${k}">${auto ? '🤖 Decisões automáticas: LIGADAS' : '🤖 Decisões automáticas: DESLIGADAS'}</button>
         <button class="btn red" data-fire="${k}" style="flex:0 0 auto">Demitir</button></div>`;
     } else if (open) {
-      body = `<div class="btns"><button class="btn" data-hire="${k}" ${s.cash < f.salary ? 'disabled' : ''}>Contratar · ${M(f.salary)}/mês</button></div>`;
+      body = `${warn ? `<div class="supline bad">⚠️ ${warn}</div>` : mentor ? `<div class="supline ok">👤 Supervisor: ${mentor.name} ✅</div>` : ''}
+        <div class="btns"><button class="btn ${warn ? 'red' : ''}" data-hire="${k}" ${s.cash < Math.round(f.salary * Sim.FLOW) ? 'disabled' : ''}>${warn ? 'Contratar fora de ordem' : 'Contratar'} · ${M(Math.round(f.salary * Sim.FLOW))}/mês</button></div>`;
     } else {
       body = `<div class="locked">🔒 ${why}</div>`;
     }
     return `<div class="card asset ${open || on ? '' : 'dim'}"><div class="top"><span class="ico">${f.icon}</span>
       <div class="nm">${f.name}<small>${sub}</small></div>
-      <div class="val">${on ? '✅' : open ? '' : '🔒'}</div></div>
+      <div class="val">${on ? '✅' : open ? '' : '🔒'}<small>nº ${nth}</small></div></div>
       <div class="mut" style="margin-top:8px;font-size:14px">${f.desc}</div>${body}</div>`;
   }
 
@@ -231,7 +235,16 @@
     const names = Sim.STAFF_ORDER.map(k => Sim.STAFF[k].name);
     const mine = s.log.filter(l => (l.includes('😅') || names.some(n => l.includes(n))) && !/Agora você pode/.test(l)).slice(0, 8);
     const logHtml = mine.length ? mine.map(l => `<div class="logline">${l}</div>`).join('') : '<div class="mut">Ainda não fizeram nada.</div>';
-    return `<div class="card"><h3>👔 Folha de pagamento (${count} de 15)</h3><div class="big ${cost ? 'neg' : ''}">${cost ? '-' : ''}${M(cost)}</div>
+    const nextK = Sim.nextInOrder(s);
+    const orderRow = Sim.HIRE_ORDER.map((k, i) => {
+      const st = Sim.hired(s, k) ? 'done' : k === nextK ? 'next' : 'wait';
+      return `<span class="step ${st}">${st === 'done' ? '✅' : st === 'next' ? '👉' : '⬜'} ${i + 1}º ${Sim.STAFF[k].icon}</span>`;
+    }).join('');
+    const orderCard = `<div class="card staffnote"><h3>📋 Ordem certa para contratar</h3>
+      <div class="steps">${orderRow}</div>
+      <div class="mut" style="margin-top:8px;font-size:14px">${nextK ? `Próximo: <b>${Sim.STAFF[nextK].icon} ${Sim.STAFF[nextK].name}</b>${Sim.lockReason(s, nextK) ? ' (' + Sim.lockReason(s, nextK).replace('Precisa de: ', 'precisa de ') + ')' : ''}.` : 'Equipe completa!'}
+        Cada pessoa precisa do <b>supervisor</b> dela contratado antes e com nível pelo menos metade do dela. Sem isso ela erra muito, rende só metade e ninguém corrige os erros: pode até quebrar a prefeitura.</div></div>`;
+    return `${orderCard}<div class="card"><h3>👔 Folha de pagamento (${count} de 15)</h3><div class="big ${cost ? 'neg' : ''}">${cost ? '-' : ''}${M(cost)}</div>
       <div class="mut" style="text-align:center">por mês</div></div>
       <div class="mut" style="font-size:14px;margin-bottom:12px">Cada pessoa é boa em uma coisa. Algumas só podem ser contratadas depois de outras, e quanto mais gente da mesma área, maior o bônus de time completo. Quanto maior a cidade, mais trabalho: treine quem ficar sobrecarregado.</div>
       ${areas}
@@ -290,7 +303,8 @@
   function viewNews() {
     const done = Sim.GOALS.filter(g => s.goals[g.id]).length;
     const list = Sim.GOALS.map(g => `<div class="mission ${s.goals[g.id] ? 'done' : ''}"><span class="ico">${s.goals[g.id] ? '✅' : '⬜'}</span>${MISSIONS[g.id] || g.text}</div>`).join('');
-    return `<div class="card"><h3>⭐ Missões (${done}/${Sim.GOALS.length})</h3>${list}</div>
+    return `<div class="card"><h3>🎚️ Dificuldade: ${Math.round(Sim.DIFFICULTY * 100)}%</h3><div class="mut" style="font-size:14px">Custos da cidade e eventos ruins mais pesados. A equipe só ajuda se for contratada na ordem certa.</div></div>
+      <div class="card"><h3>⭐ Missões (${done}/${Sim.GOALS.length})</h3>${list}</div>
       <div class="btns"><button class="btn red" id="newgame">Recomeçar jogo</button></div>`;
   }
 
@@ -327,7 +341,7 @@
     else if (d.sell) r = Sim.sell(s, d.sell, amount);
     else if (d.sellall) r = Sim.sell(s, d.sellall, 'all');
     else if (d.tax) { Sim.setTax(s, s.taxRate + +d.tax); r = {ok: true}; }
-    else if (d.hire) { r = Sim.hire(s, d.hire); if (r.ok) toast(Sim.STAFF[d.hire].icon + ' ' + Sim.STAFF[d.hire].name + ' contratado!'); }
+    else if (d.hire) { const w = Sim.orderWarning(s, d.hire); if (w && !confirm('⚠️ ' + w + '\n\nContratar mesmo assim?')) return; r = Sim.hire(s, d.hire); if (r.ok) toast(Sim.STAFF[d.hire].icon + ' ' + Sim.STAFF[d.hire].name + ' contratado!'); }
     else if (d.upgrade) { r = Sim.upgrade(s, d.upgrade); if (r.ok) toast('🎓 ' + Sim.STAFF[d.upgrade].name + ' subiu para o nível ' + Sim.levelOf(s, d.upgrade) + '!'); }
     else if (d.fire) { if (!confirm('Demitir ' + Sim.STAFF[d.fire].name + '? Ele perde o nível.')) return; r = Sim.fire(s, d.fire); if (r.ok) toast('Demitido.'); }
     else if (d.auto) { r = Sim.setAuto(s, d.auto, !Sim.active(s, d.auto)); }

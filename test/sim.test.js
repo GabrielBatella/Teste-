@@ -206,7 +206,8 @@ test('corretor aplica a sobra em renda fixa e reduz a corretagem', () => {
   assert.ok(v > 997 && v < 1000, 'taxa menor que a padrão: ' + v);
   assert.equal(s.cash, antes - 1000);
   for (let i = 1; i < 8; i++) { s.cash = 1e6; Sim.upgrade(s, 'corretor'); }
-  assert.equal(Sim.staffInfo(s, 'corretor').lines[0].includes('0,00%'), true, 'corretor nível 8 não cobra corretagem');
+  for (let i = 1; i < 4; i++) { s.cash = 1e6; Sim.upgrade(s, 'analista'); }
+  assert.equal(Sim.staffInfo(s, 'corretor').lines[0].includes('0,00%'), true, 'corretor nível 8 bem supervisionado não cobra corretagem');
 });
 
 test('gestor de risco vende ativo que despencou', () => {
@@ -383,8 +384,8 @@ test('falência só passa de -R$ 15 mil no caixa', () => {
 
 // ---------- Erros da equipe ----------
 test('chance de erro: 30% normal, sobe se estiver sobrecarregado e tem teto', () => {
-  const s = rica(40); s.pop = 60;
-  Sim.hire(s, 'arquiteto');
+  const s = rica(40); s.pop = 120;
+  assert.ok(Sim.hire(s, 'gerente').ok); assert.ok(Sim.hire(s, 'arquiteto').ok); s.pop = 60;
   assert.ok(Math.abs(Sim.errorChance(s, 'arquiteto') - 0.30) < 1e-9);
   s.pop = 400; const e = Sim.errorChance(s, 'arquiteto');
   assert.ok(e > 0.30 && e <= 0.6, 'errorChance: ' + e);
@@ -576,26 +577,75 @@ test('são 15 pessoas em 3 áreas de 5, com 8 níveis', () => {
   assert.deepEqual([...todos].sort(), [...Sim.STAFF_ORDER].sort());
 });
 
-test('é preciso contratar um antes do outro', () => {
-  const s = rica(60); s.pop = 400; s.cash = 1e6;
-  assert.equal(Sim.hire(s, 'obras').ok, false, 'Gerente de Obras exige o Arquiteto');
-  assert.ok(Sim.lockReason(s, 'obras').includes('Arquiteto'));
-  assert.ok(Sim.hire(s, 'arquiteto').ok);
-  assert.ok(Sim.hire(s, 'obras').ok);
-  assert.equal(Sim.hire(s, 'ambiental').ok, false, 'Ambiental exige a Infraestrutura');
-  assert.ok(Sim.hire(s, 'infra').ok);
-  assert.ok(Sim.hire(s, 'ambiental').ok);
-  assert.equal(Sim.hire(s, 'auditor').ok, false, 'Auditor exige o Tesoureiro');
-  assert.ok(Sim.hire(s, 'gerente').ok); assert.ok(Sim.hire(s, 'tesoureiro').ok); assert.ok(Sim.hire(s, 'auditor').ok);
+test('ordem certa: o Gerente Financeiro vem primeiro, cada um depois do seu supervisor', () => {
+  assert.equal(Sim.HIRE_ORDER[0], 'gerente');
+  assert.equal(Sim.HIRE_ORDER.length, 15);
+  assert.deepEqual([...Sim.HIRE_ORDER].sort(), [...Sim.STAFF_ORDER].sort());
+  Sim.HIRE_ORDER.forEach((k, i) => { const m = Sim.STAFF[k].mentor; if (m) assert.ok(Sim.HIRE_ORDER.indexOf(m) < i, `${k} vem depois de ${m}`); });
+  assert.equal(Sim.STAFF.gerente.mentor, null, 'só o Gerente não tem supervisor');
+  assert.equal(Sim.STAFF_ORDER.filter(k => !Sim.STAFF[k].mentor).length, 1);
 });
 
-test('demitir quem os outros dependem demite a cadeia', () => {
+test('contratar fora de ordem é possível, mas avisa e dá prejuízo', () => {
+  const s = rica(55); s.pop = 400; s.cash = 1e6;
+  const r = Sim.hire(s, 'arquiteto');
+  assert.ok(r.ok && r.warn && r.warn.includes('Gerente Financeiro'), 'avisa que falta o supervisor');
+  assert.equal(Sim.supervision(s, 'arquiteto').state, 'missing');
+  assert.equal(Sim.nextInOrder(s), 'gerente');
+  const ok = rica(55); ok.pop = 400; ok.cash = 1e6; assert.ok(Sim.hire(ok, 'gerente').ok);
+  const r2 = Sim.hire(ok, 'arquiteto'); assert.ok(r2.ok && !r2.warn);
+  assert.equal(Sim.supervision(ok, 'arquiteto').state, 'ok');
+  assert.equal(Sim.nextInOrder(ok), 'analista');
+  // sem supervisor: rende menos, erra mais, e o desconto de obras é menor
+  assert.ok(Sim.errorChance(s, 'arquiteto') >= Sim.errorChance(ok, 'arquiteto') + 0.25);
+  assert.ok(Sim.staffInfo(s, 'arquiteto').supervision.effectiveLevel < Sim.staffInfo(ok, 'arquiteto').supervision.effectiveLevel || Sim.levelOf(s, 'arquiteto') === 1);
+  for (let i = 1; i < 6; i++) { s.cash = 1e6; ok.cash = 1e6; Sim.upgrade(s, 'arquiteto'); Sim.upgrade(ok, 'arquiteto'); }
+  s.pop = ok.pop = 400; // mesma cidade
+  assert.ok(Sim.buildCost(s, 'casa') > Sim.buildCost(ok, 'casa'), 'sem supervisor o desconto é menor');
+});
+
+test('o supervisor precisa ter nível suficiente (pelo menos metade)', () => {
+  const s = rica(56); s.pop = 400; s.cash = 1e6; Sim.hire(s, 'gerente'); Sim.hire(s, 'arquiteto');
+  for (let i = 1; i < 6; i++) { s.cash = 1e6; Sim.upgrade(s, 'arquiteto'); }
+  assert.equal(Sim.supervision(s, 'arquiteto').state, 'weak', 'gerente nível 1 não segura um arquiteto nível 6');
+  for (let i = 1; i < 3; i++) { s.cash = 1e6; Sim.upgrade(s, 'gerente'); }
+  assert.equal(Sim.supervision(s, 'arquiteto').state, 'ok');
+  assert.ok(Sim.staffInfo(s, 'arquiteto').supervision.note === null);
+});
+
+test('sem supervisor ninguém corrige os erros: eles custam o dobro e nada é recuperado', () => {
+  const custo = comSup => { let tot = 0, n = 0;
+    for (let k = 0; k < 40; k++) { const s = rica(57 + k); s.pop = 100; s.cash = 5e6;
+      if (comSup) Sim.hire(s, 'gerente'); Sim.hire(s, 'arquiteto');
+      for (let m = 0; m < 24; m++) { s.cash = 5e6; for (let i = 0; i < 6; i++) { if (Sim.analyze(s).empRate >= 0.8) { Sim.buildAny(s, 'loja'); } } Sim.step(s); }
+      tot += s.staffStats.cost; n += s.staffStats.errors; }
+    return {tot: tot / 40, n: n / 40}; };
+  const sem = custo(false), com = custo(true);
+  assert.ok(sem.n > com.n * 1.3, `mais erros sem supervisor: ${sem.n} x ${com.n}`);
+  assert.ok(sem.tot > com.tot * 2, `erros custam mais sem supervisor: ${sem.tot} x ${com.tot}`);
+});
+
+test('demitir o supervisor deixa os subordinados sem supervisão (ninguém é demitido junto)', () => {
   const s = rica(61); s.pop = 400; s.cash = 1e6;
-  ['arquiteto', 'obras', 'infra', 'ambiental'].forEach(k => assert.ok(Sim.hire(s, k).ok));
+  ['gerente', 'arquiteto', 'obras', 'infra', 'ambiental'].forEach(k => assert.ok(Sim.hire(s, k).ok));
   Sim.fire(s, 'infra');
   assert.equal(Sim.hired(s, 'infra'), false);
-  assert.equal(Sim.hired(s, 'ambiental'), false, 'quem dependia sai junto');
-  assert.equal(Sim.hired(s, 'obras'), true);
+  assert.equal(Sim.hired(s, 'ambiental'), true, 'continua contratado');
+  assert.equal(Sim.supervision(s, 'ambiental').state, 'missing', 'mas sem supervisor');
+  assert.equal(Sim.supervision(s, 'obras').state, 'ok');
+});
+
+test('ordem errada pode quebrar a prefeitura; ordem certa não', () => {
+  const rodar = ordem => { let quebrou = 0, caixa = 0;
+    for (let k = 1; k <= 30; k++) { const s = Sim.newGame(2000 + k); s.pop = 200; s.cash = 20000; for (let i = 0; i < 18; i++) Sim.buildAny(s, 'casa'); for (let i = 0; i < 6; i++) Sim.buildAny(s, 'loja'); s.pop = 200;
+      s.cash = 1e6; ordem.forEach(x => { s.cash = 1e6; Sim.hire(s, x); }); s.cash = 20000;
+      for (let m = 0; m < 60 && !s.over; m++) Sim.step(s);
+      if (s.over) quebrou++; caixa += Sim.netWorth(s); }
+    return {quebrou, nw: caixa / 30}; };
+  // fora de ordem: contrata só os especialistas, sem os supervisores
+  const errada = rodar(['social', 'ambiental', 'global', 'economista', 'auditor', 'diplomata']);
+  const certa = rodar(['gerente', 'arquiteto', 'obras', 'social']);
+  assert.ok(errada.nw < certa.nw, `ordem errada rende menos: ${errada.nw} x ${certa.nw}`);
 });
 
 test('bônus de time: mais colegas na área = efeitos melhores', () => {
@@ -903,9 +953,10 @@ test('receitas e custos mensais foram reduzidos pela metade', () => {
   assert.equal(Sim.FLOW, 0.5);
   const s = Sim.newGame(1); const a = Sim.analyze(s); s.cash = 1e6; Sim.step(s);
   assert.ok(Math.abs(s.report.taxes - a.employed * 4) < 1e-6, 'imposto por empregado caiu de 8 para 4');
-  assert.ok(Math.abs(s.report.maint - a.upkeep * 0.5) < 1e-6);
+  assert.ok(Math.abs(s.report.maint - a.upkeep * 0.5 * Sim.COST_HARD) < 1e-6, 'manutenção na metade, mais a dificuldade');
   assert.ok(s.report.net > 0, 'a cidade inicial ainda dá lucro');
   assert.ok(s.report.net < 100, 'mas bem menos que antes: ' + s.report.net);
+  assert.equal(Sim.DIFFICULTY, 1.3);
 });
 
 test('salários seguem o novo ritmo', () => {
@@ -1077,7 +1128,7 @@ test('tesoureiro troca dívida cara do banco por empréstimo barato de um país'
 
 test('diplomata: assina tratados (nível 3), decide dilemas (2) e pedidos (4)', () => {
   const prep = L => { const s = rica(1600); s.pop = 200; s.cash = 3e5; assert.ok(Sim.hire(s, 'gerente').ok); assert.ok(Sim.hire(s, 'diplomata').ok);
-    for (let i = 1; i < L; i++) { s.cash = 3e5; Sim.upgrade(s, 'diplomata'); } s.cash = 3e5; return s; };
+    for (let i = 1; i < L; i++) { s.cash = 3e5; Sim.upgrade(s, 'diplomata'); if (i % 2 === 1) Sim.upgrade(s, 'gerente'); } s.cash = 3e5; return s; };
   let tratados = 0, dilemas = 0, pedidos = 0;
   for (let k = 0; k < 15; k++) {
     const a = prep(3); a.seed = 9000 + k; a.sseed = 500 + k; Sim.NEIGHBORS.forEach(n => { a.world.rel[n.key] = 80; }); Sim.step(a); if (Sim.NEIGHBORS.some(n => a.world.treaty[n.key])) tratados++;
@@ -1105,10 +1156,10 @@ test('gestor de risco: reduz posição grande, compra ouro na crise (nível 5) e
 });
 
 test('a interface sabe o que cada nível libera (skills)', () => {
-  const s = rica(1800); s.pop = 100; s.cash = 1e6; Sim.hire(s, 'arquiteto');
+  const s = rica(1800); s.pop = 100; s.cash = 1e6; Sim.hire(s, 'gerente'); Sim.hire(s, 'arquiteto');
   let sk = Sim.staffInfo(s, 'arquiteto').skills;
   assert.ok(sk.length >= 4 && sk[0].on && !sk[sk.length - 1].on);
-  for (let i = 1; i < 8; i++) Sim.upgrade(s, 'arquiteto');
+  for (let i = 1; i < 8; i++) { Sim.upgrade(s, 'arquiteto'); if (i % 2 === 1) Sim.upgrade(s, 'gerente'); }
   assert.ok(Sim.staffInfo(s, 'arquiteto').skills.every(x => x.on), 'nível 8 libera tudo');
   ['infra', 'ambiental', 'social', 'corretor', 'risco', 'global', 'gerente', 'tesoureiro', 'diplomata'].forEach(k => assert.ok(Sim.SKILLS[k].length >= 2, k));
 });
