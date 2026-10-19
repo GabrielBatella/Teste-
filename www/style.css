@@ -55,6 +55,8 @@ button.btn:disabled{opacity:.35}
 .mission .ico{font-size:26px}.mission.done{color:var(--mut)}
 #over{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;z-index:10}
 #over{align-items:center;padding:20px;z-index:20}
+#away{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:20px;z-index:40;overflow-y:auto}
+#away .panel{background:var(--card);border-radius:20px;padding:22px;max-width:380px;width:100%;max-height:92dvh;overflow-y:auto;text-align:center}
 #over .panel{background:var(--card);border-radius:20px;padding:24px;text-align:center;max-width:360px}
 .hidden{display:none!important}
 #toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 66px);transform:translateX(-50%);box-shadow:0 6px 20px rgba(0,0,0,.4);background:var(--card2);padding:12px 18px;border-radius:24px;font-size:16px;z-index:30;max-width:90vw;text-align:center}

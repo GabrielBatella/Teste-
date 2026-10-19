@@ -27,7 +27,9 @@
     ['🌍 Bolsas do mundo: sobem e caem com a economia de cada país', Sim.WORLD_ASSETS],
   ];
 
-  function save() { try { localStorage.setItem(SAVE, Sim.serialize(s)); } catch (e) {} }
+  const SEEN = 'cidadecapital-seen', MAX_AWAY_MONTHS = 480;
+  function markSeen() { try { localStorage.setItem(SEEN, JSON.stringify({t: Date.now(), speed})); } catch (e) {} }
+  function save() { try { localStorage.setItem(SAVE, Sim.serialize(s)); } catch (e) {} markSeen(); }
   function loadGame() {
     try { const g = Sim.load(localStorage.getItem(SAVE)); if (g) return g; } catch (e) {}
     return Sim.newGame();
@@ -416,6 +418,7 @@
     const t = e.target.closest('button'); if (!t) return;
     const d = t.dataset;
     let r;
+    if (t.id === 'awayok') { $('away').classList.add('hidden'); setSpeed(resumeSpeed); return; }
     if (t.id === 'restart') return newGame();
     if (t.id === 'newgame') { if (confirm('Apagar a cidade e recomeçar?')) newGame(); return; }
     if (t.id === 'histbtn') return showHist();
@@ -449,9 +452,46 @@
     save(); render();
   });
 
-  document.addEventListener('visibilitychange', () => { if (document.hidden) { clearInterval(timer); save(); } else setSpeed(speed); });
+  // ---------- Tempo longe do jogo ----------
+  // O Android congela o app quando a tela apaga ou você troca de aplicativo, então ao voltar o jogo simula os
+  // meses que passaram (1 mês a cada 5 s, no máximo 40 min). Se o caixa ficar no vermelho, ele para ali para você resolver.
+  let resumeSpeed = 1;
+  function catchUp() {
+    let seen = null; try { seen = JSON.parse(localStorage.getItem(SEEN)); } catch (e) {}
+    if (!seen || !seen.speed || !s || s.over) return null;
+    const iv = seen.speed === 2 ? 2400 : 5000, away = Date.now() - seen.t, months = Math.min(MAX_AWAY_MONTHS, Math.floor(away / iv));
+    if (months < 2) return null;
+    const from = {cash: s.cash, pop: Math.floor(s.pop), month: s.month, nw: Sim.netWorth(s), histN: s.histN || 0};
+    let done = 0, red = false;
+    while (done < months && !s.over) { Sim.step(s); done++; if (s.cash < 0) { red = true; break; } }
+    save();
+    return {away, months: done, wanted: months, red, from, to: {cash: s.cash, pop: Math.floor(s.pop), nw: Sim.netWorth(s)}, capped: away / iv > MAX_AWAY_MONTHS};
+  }
+  function showAway(r) {
+    const mins = Math.round(r.away / 60000), when = mins >= 120 ? Math.round(mins / 60) + ' horas' : mins >= 1 ? mins + ' min' : 'poucos segundos';
+    const yrs = r.months >= 12 ? ` (${(r.months / 12).toFixed(1).replace('.', ',')} anos)` : '';
+    const news = (s.hist || []).slice(0, Math.min(6, Math.max(0, (s.histN || 0) - r.from.histN))).map(h => `<div class="logline">${h.t}</div>`).join('');
+    $('away').innerHTML = `<div class="panel"><div style="font-size:54px">😴</div><h2>Você voltou!</h2>
+      <p>Ficou fora ${when}: passaram <b>${r.months} meses</b>${yrs}.${r.capped ? ' <span class="mut">(o limite é de 40 minutos de ausência)</span>' : ''}</p>
+      <div class="row"><span>💰 Dinheiro</span><b class="${cls(r.to.cash - r.from.cash)}">${M(r.from.cash)} → ${M(r.to.cash)}</b></div>
+      <div class="row"><span>👥 Habitantes</span><b>${r.from.pop.toLocaleString('pt-BR')} → ${r.to.pop.toLocaleString('pt-BR')}</b></div>
+      <div class="row"><span>🏦 Patrimônio</span><b class="${cls(r.to.nw - r.from.nw)}">${M(r.from.nw)} → ${M(r.to.nw)}</b></div>
+      ${r.red ? `<p class="neg"><b>⚠️ O caixa ficou no vermelho e o jogo parou no mês ${s.month} para você resolver.</b></p>` : ''}
+      ${news ? `<h4 style="text-align:left;margin:12px 0 4px">O que aconteceu por último</h4><div style="text-align:left">${news}</div>` : ''}
+      <button class="btn" id="awayok" style="margin-top:14px;width:100%">Continuar</button></div>`;
+    $('away').classList.remove('hidden');
+  }
+  function comeBack() {
+    const r = catchUp();
+    if (r) { resumeSpeed = speed || 1; setSpeed(0); render(); showAway(r); if (s.over) { $('away').classList.add('hidden'); setSpeed(0); showOver(); } }
+    else setSpeed(speed);
+  }
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { clearInterval(timer); save(); } else comeBack(); });
+  window.addEventListener('pagehide', () => { save(); });
 
   s = loadGame();
-  window.__game = {get s() { return s; }, tick, setSpeed};
-  render(); if (s.over) showOver(); else setSpeed(1);
+  window.__game = {get s() { return s; }, tick, setSpeed, catchUp, comeBack};
+  render();
+  if (s.over) showOver();
+  else { const r = catchUp(); if (r) { render(); resumeSpeed = 1; setSpeed(0); showAway(r); if (s.over) { $('away').classList.add('hidden'); showOver(); } } else setSpeed(1); }
 })();
