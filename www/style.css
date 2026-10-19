@@ -98,3 +98,12 @@ button.btn small{display:block;font-weight:400;font-size:12px;margin-top:2px}
 .minis+.minis{margin-top:0}
 .side .minis{flex-wrap:wrap}
 .side .minis .mini{min-width:calc(20% - 6px)}
+
+.chipb{display:inline-block;background:#0b121a;border-radius:20px;padding:6px 10px;margin:3px 4px 3px 0;font-size:15px;letter-spacing:0}
+.sky{font-size:inherit;letter-spacing:0;word-break:normal;line-height:1.2}
+.landwarn{border:2px solid var(--warn)}
+.perks .okchip{background:#12331f;color:var(--ok)}
+nav button{font-size:22px}
+nav button span{font-size:11px}
+nav button.alert::after{content:'';position:absolute;width:10px;height:10px;border-radius:50%;background:var(--bad);margin:-2px 0 0 22px}
+nav button{position:relative}
