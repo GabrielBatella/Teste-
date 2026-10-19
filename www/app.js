@@ -12,8 +12,19 @@
     agua: 'Água para o povo', esgoto: 'Saneamento básico', solar: 'Energia limpa (pequena)', eolica: 'Energia limpa', carvao: 'Muita energia, mas polui',
     filtro: 'Limpa o ar', floresta: 'Barato, limpa o ar', reciclagem: 'Limpa o ar e dá lucro',
   };
-  const RISK = {poupanca: ['🟢', 'Seguro'], cdb: ['🟢', 'Seguro'], tesouro: ['🟢', 'Seguro'], fii: ['🟡', 'Médio'], ouro: ['🟡', 'Médio'], etf: ['🟡', 'Médio'], dolar: ['🟡', 'Médio'], acoes: ['🟠', 'Arriscado'], cripto: ['🔴', 'Muito arriscado'], startup: ['🔴', 'Loteria']};
-  const ASSET_GROUPS = [['🟢 Seguros', ['poupanca', 'cdb', 'tesouro']], ['🟡 Moderados', ['fii', 'ouro', 'etf', 'dolar']], ['🔴 Arriscados', ['acoes', 'cripto', 'startup']]];
+  const RISK = {
+    poupanca: ['🟢', 'Seguro'], tesouro: ['🟢', 'Seguro'], cdb: ['🟢', 'Seguro, banco gigante'], cdb_b: ['🟢', 'Baixo risco'],
+    cdb_c: ['🟡', 'Risco médio: pode ter crise'], cdb_d: ['🔴', 'Pode quebrar!'],
+    divid: ['🟡', 'Médio'], fii: ['🟡', 'Médio'], ouro: ['🟡', 'Médio'], etf: ['🟡', 'Médio'], dolar: ['🟡', 'Médio'],
+    acoes: ['🟠', 'Arriscado'], cripto: ['🔴', 'Muito arriscado'], startup: ['🔴', 'Loteria'],
+  };
+  const ASSET_GROUPS = [
+    ['🟢 Seguros', ['poupanca', 'tesouro']],
+    ['🏦 Bancos (CDB): quanto mais paga, mais arrisca', ['cdb', 'cdb_b', 'cdb_c', 'cdb_d']],
+    ['💵 Pagam dividendos todo mês', ['divid', 'fii']],
+    ['🟡 Moderados', ['ouro', 'etf', 'dolar']],
+    ['🔴 Arriscados: podem render muito mais', ['acoes', 'cripto', 'startup']],
+  ];
   const MISSIONS = {
     pop100: '👥 100 habitantes', pop500: '👥 500 habitantes', pop1500: '👥 1.500 habitantes', pop5000: '🌆 5.000 habitantes',
     nw50: '💰 R$ 50 mil de patrimônio', nw200: '💰 R$ 200 mil de patrimônio', nw1m: '💎 R$ 1 milhão de patrimônio',
@@ -121,10 +132,13 @@
     const chips = [500, 1000, 5000, 10000].map(v => `<button class="chip ${v === amount ? 'on' : ''}" data-amt="${v}">${M(v)}</button>`).join('');
     const card = d => {
       const x = s.assets[d.key], val = x.units * x.price, pl = x.spent > 0 ? (val / x.spent - 1) * 100 : 0;
-      const r = RISK[d.key], adv = Sim.hired(s, 'analista') ? Sim.advice(s, d.key) : null;
+      const r = RISK[d.key], adv = Sim.hired(s, 'analista') ? Sim.advice(s, d.key) : null, y = Sim.assetYield(s, d.key);
+      const pct1 = v => (v * 100).toFixed(2).replace('.', ',') + '%';
+      const divLine = y.div > 0 ? `<span class="okchip">💵 Dividendos ${pct1(y.div)}/mês${val > 0 ? ' · ~' + M(val * y.div) + ' por mês' : ''}</span>` : '';
       return `<div class="card asset"><div class="top"><span class="ico">${d.icon}</span>
         <div class="nm">${d.name}<small>${r[0]} ${r[1]}</small></div>
         <div class="val">${M(val)}${x.units > 0 ? `<small class="${cls(pl)}">${pl >= 0 ? '▲' : '▼'} ${Math.abs(pl).toFixed(1)}%</small>` : ''}</div></div>
+        <div class="perks"><span>📈 Rende hoje ~${pct1(y.growth)}/mês</span>${divLine}</div>
         ${adv ? `<div class="advice">📊 ${adv.icon} ${adv.text}</div>` : ''}
         <div class="btns"><button class="btn" data-buy="${d.key}" ${s.cash < amount ? 'disabled' : ''}>Comprar</button>
         <button class="btn sec" data-sell="${d.key}" ${x.units <= 0 ? 'disabled' : ''}>Vender</button>
@@ -135,7 +149,10 @@
       ? `<div class="card staffnote">📊 Você já pode contratar um <b>Analista de Mercado</b> na aba 👔 Equipe.</div>` : '';
     const crew = ['analista', 'corretor', 'risco', 'global'].filter(k => Sim.hired(s, k)).map(k => Sim.STAFF[k].icon + ' ' + Sim.STAFF[k].name).join(' · ');
     const auto = crew ? `<div class="mut" style="margin-bottom:10px">Sua equipe de investimentos: ${crew}</div>` : '';
-    return `${hint}${auto}<div class="chips">${chips}</div>${cards}`;
+    const m = s.market, up = m.rate - m.prev;
+    const rateCard = `<div class="card"><h3>🏛️ Juros do país: ${(m.rate * 100).toFixed(2).replace('.', ',')}% ao mês ${Math.abs(up) < 0.00005 ? '➖' : up > 0 ? '🔺' : '🔻'}</h3>
+      <div class="mut" style="font-size:14px">${m.rate >= 0.0085 ? 'Juros altos: a renda fixa está pagando bem, mas as ações sofrem.' : m.rate <= 0.0045 ? 'Juros baixos: a renda fixa paga pouco. Os investimentos de risco ficam mais atraentes.' : 'Juros normais.'} Cada banco paga um múltiplo disso, então a renda fixa muda de rendimento com o tempo.</div></div>`;
+    return `${hint}${rateCard}${auto}<div class="chips">${chips}</div>${cards}`;
   }
 
   function manager(a) {
@@ -157,6 +174,7 @@
       <div class="row"><span>💳 Dívida</span><b class="${s.debt ? 'neg' : ''}">${M(s.debt)}</b></div>
       ${Sim.foreignDebt(s) ? `<div class="row"><span>🌍 Dívida com outros países</span><b class="neg">${M(Sim.foreignDebt(s))}</b></div>` : ''}
       ${Sim.lentValue(s) ? `<div class="row"><span>🤝 A receber dos vizinhos</span><b class="pos">${M(Sim.lentValue(s))}</b></div>` : ''}
+      ${s.report && s.report.dividends > 0 ? `<div class="row"><span>💵 Dividendos no último mês</span><b class="pos">${sign(s.report.dividends)}</b></div>` : ''}
       <div class="row"><span>Ganho por mês</span><b class="${cls(net)}">${sign(net)}</b></div></div>
     <div class="card"><h3>🏛️ Imposto da cidade</h3>
       <div class="stepper"><button data-tax="-1">−</button><b>${s.taxRate}%</b><button data-tax="1">+</button></div>

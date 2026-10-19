@@ -66,7 +66,7 @@ test('poupança rende com o tempo e sem taxa', () => {
   Sim.buy(s, 'poupanca', 1000);
   assert.equal(Sim.holdingsValue(s), 1000);
   run(s, 12);
-  assert.ok(Sim.holdingsValue(s) > 1055);
+  assert.ok(Sim.holdingsValue(s) > 1030 && Sim.holdingsValue(s) < 1090, 'poupança rende pouco: ' + Sim.holdingsValue(s));
 });
 
 test('empréstimo respeita limite e cobra juros', () => {
@@ -199,7 +199,7 @@ test('corretor aplica a sobra em renda fixa e reduz a corretagem', () => {
   assert.ok(Sim.hire(s, 'analista').ok);
   assert.ok(Sim.hire(s, 'corretor').ok);
   Sim.step(s);
-  assert.ok(s.assets.cdb.units > 0, 'deveria investir');
+  assert.ok(Sim.holdingsValue(s) > 0, 'deveria investir');
   const antes = s.cash;
   Sim.buy(s, 'acoes', 1000);
   const v = s.assets.acoes.units * s.assets.acoes.price;
@@ -540,7 +540,7 @@ test('novos investimentos existem e funcionam', () => {
     assert.ok(Sim.ASSETS.find(a => a.key === k), k);
     assert.ok(Sim.buy(s, k, 500).ok); assert.ok(Sim.sell(s, k, 'all').ok);
   });
-  assert.equal(Sim.ASSETS.length, 10);
+  assert.equal(Sim.ASSETS.length, 14);
   for (let m = 0; m < 24; m++) Sim.step(s);
   Sim.ASSETS.forEach(a => assert.ok(s.assets[a.key].price > 0 && Number.isFinite(s.assets[a.key].price)));
 });
@@ -821,5 +821,91 @@ test('save antigo ganha mundo e terreno', () => {
   const s = Sim.newGame(91); delete s.world; delete s.landBought;
   const t = Sim.load(JSON.stringify(s));
   assert.ok(t.world.rel.reino === 50 && t.landBought === 0);
+  assert.ok(Sim.step(t));
+});
+
+// ---------- Juros do país, bancos e dividendos ----------
+test('juros do país variam, ficam entre o mínimo e o máximo e voltam à média', () => {
+  const s = Sim.newGame(700); const taxas = [];
+  for (let m = 0; m < 240; m++) { Sim.step(s); taxas.push(s.market.rate); if (s.over) s.over = null; s.cash = Math.max(s.cash, 50000); }
+  assert.ok(Math.min(...taxas) >= 0.003 - 1e-12 && Math.max(...taxas) <= 0.012 + 1e-12);
+  assert.ok(new Set(taxas.map(x => x.toFixed(5))).size > 100, 'a taxa se mexe');
+  const media = taxas.reduce((a, b) => a + b, 0) / taxas.length;
+  assert.ok(Math.abs(media - Sim.BASE_RATE) < 0.0025, 'média perto de ' + Sim.BASE_RATE + ': ' + media);
+});
+
+test('há 4 bancos com rendimentos e riscos diferentes', () => {
+  const bancos = ['cdb', 'cdb_b', 'cdb_c', 'cdb_d'], s = Sim.newGame(701);
+  const y = bancos.map(k => Sim.assetYield(s, k).growth);
+  for (let i = 1; i < y.length; i++) assert.ok(y[i] > y[i - 1], 'cada banco paga mais que o anterior');
+  assert.ok(Sim.assetYield(s, 'poupanca').growth < y[0], 'poupança paga menos que qualquer CDB');
+});
+
+test('banco arriscado às vezes quebra ou tem crise; o banco seguro, nunca', () => {
+  let quebras = 0, sustos = 0, seguroCaiu = 0;
+  for (let k = 1; k <= 60; k++) {
+    const s = Sim.newGame(800 + k); s.cash = 1e7;
+    for (let m = 0; m < 120; m++) { Sim.step(s); s.cash = Math.max(s.cash, 1e6); if (s.over) s.over = null; }
+    quebras += s.log.filter(l => l.includes('quebrou')).length;
+    sustos += s.log.filter(l => l.includes('crise de confiança')).length;
+    seguroCaiu += Math.min(...s.assets.cdb.hist.slice(1).map((v, i) => v / s.assets.cdb.hist[i])) < 0.97 ? 1 : 0;
+  }
+  assert.ok(quebras >= 1 && sustos >= 5, `quebras ${quebras} sustos ${sustos}`);
+  assert.equal(seguroCaiu, 0, 'o banco gigante não tem crise');
+});
+
+test('CDB deixou de ser imbatível: ativos arriscados rendem mais em média', () => {
+  const media = key => { let t = 0; for (let k = 1; k <= 80; k++) { const s = Sim.newGame(900 + k); s.cash = 1e7; Sim.buy(s, key, 10000);
+    for (let m = 0; m < 36; m++) { Sim.step(s); s.cash = Math.max(s.cash, 1e6); if (s.over) s.over = null; }
+    t += s.assets[key].units * s.assets[key].price + s.cash * 0; } return t / 80; };
+  const cdb = media('cdb'), turbo = media('cdb_d'), acoes = media('acoes'), etf = media('etf');
+  assert.ok(acoes > cdb * 1.1, `ações ${acoes} x cdb ${cdb}`);
+  assert.ok(etf > cdb, `fundo de índice ${etf} x cdb ${cdb}`);
+  assert.ok(turbo !== cdb);
+});
+
+test('dividendos: pagam todo mês, proporcionais ao que você tem, só em alguns ativos', () => {
+  const mk = valor => { const s = Sim.newGame(10); s.cash = 1e6; Sim.buy(s, 'fii', valor); Sim.step(s); return s; };
+  const pouco = mk(5000), muito = mk(50000);
+  assert.ok(pouco.report.dividends > 0);
+  assert.ok(muito.report.dividends > pouco.report.dividends * 8, 'mais investido, mais dividendo');
+  const t = Sim.newGame(10); t.cash = 1e6; Sim.buy(t, 'cripto', 50000); Sim.buy(t, 'ouro', 50000); Sim.buy(t, 'cdb', 50000); Sim.step(t);
+  assert.equal(t.report.dividends, 0, 'cripto, ouro e CDB não pagam dividendos');
+  assert.ok(Sim.assetYield(t, 'fii').div > Sim.assetYield(t, 'acoes').div, 'fundo imobiliário paga mais dividendo que ação de crescimento');
+});
+
+test('quem cresce mais paga menos dividendo', () => {
+  const s = Sim.newGame(11);
+  const a = Sim.assetYield(s, 'fii'), b = Sim.assetYield(s, 'acoes'), c = Sim.assetYield(s, 'divid');
+  assert.ok(b.growth > a.growth && b.growth > c.growth, 'ação de crescimento cresce mais');
+  assert.ok(a.div > b.div && c.div > b.div, 'e paga o menor dividendo');
+  assert.ok(Sim.assetYield(s, 'cripto').div === 0 && Sim.assetYield(s, 'startup').div === 0);
+});
+
+test('dividendo cai no caixa e entra no relatório do mês', () => {
+  const s = Sim.newGame(12); s.cash = 1e6; Sim.buy(s, 'divid', 100000);
+  const antes = s.cash; Sim.step(s);
+  assert.ok(s.cash - antes > 400, 'dividendos de ações pagadoras entram no caixa');
+  assert.ok(s.report.net > s.report.income - s.report.expenses);
+});
+
+test('o analista melhora ativos de risco mas não a renda fixa', () => {
+  const mk = () => { const s = Sim.newGame(13); s.pop = 100; s.cash = 1e6; Sim.hire(s, 'analista'); return s; };
+  const a = mk(); for (let i = 1; i < 8; i++) Sim.upgrade(a, 'analista');
+  assert.ok(Sim.assetYield(a, 'acoes').growth > Sim.assetYield(Sim.newGame(13), 'acoes').growth, 'ação rende mais com analista');
+  assert.equal(Sim.assetYield(a, 'cdb').growth, Sim.assetYield(Sim.newGame(13), 'cdb').growth, 'CDB igual');
+  assert.equal(Sim.assetYield(a, 'tesouro').growth, Sim.assetYield(Sim.newGame(13), 'tesouro').growth);
+});
+
+test('juros altos pesam sobre os ativos de risco e favorecem a renda fixa', () => {
+  const s = Sim.newGame(14), t = Sim.newGame(14); t.market.rate = 0.011;
+  assert.ok(Sim.assetYield(t, 'cdb').growth > Sim.assetYield(s, 'cdb').growth);
+  assert.ok(Sim.assetYield(t, 'acoes').growth < Sim.assetYield(s, 'acoes').growth);
+});
+
+test('save antigo ganha juros, bancos e ações de dividendos', () => {
+  const s = Sim.newGame(15); delete s.market; ['cdb_b', 'cdb_c', 'cdb_d', 'divid'].forEach(k => delete s.assets[k]);
+  const t = Sim.load(JSON.stringify(s));
+  assert.ok(t.market.rate > 0 && t.assets.cdb_d && t.assets.divid);
   assert.ok(Sim.step(t));
 });

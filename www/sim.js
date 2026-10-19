@@ -8,6 +8,8 @@
   const OVERDRAFT_LIMIT = 15000, LOAN_LIMIT = 30000, LOAN_RATE = 0.015, OVERDRAFT_RATE = 0.03, FEE = 0.003;
   // Redes básicas que a cidade já recebe de graça (só começam a faltar quando ela cresce)
   const BASE_POWER = 150, BASE_WATER = 100, BASE_SEWAGE = 80;
+  // Juros do país: sobem e descem; a renda fixa acompanha. Média de 0,65% ao mês.
+  const BASE_RATE = 0.0065, MIN_RATE = 0.003, MAX_RATE = 0.012;
   const ERROR_BASE = 0.30;   // chance de erro de um funcionário em cada decisão (1,5 de 5)
   // Terreno: lotes de 12 terrenos, cada compra custa mais que a anterior (cidade sem limite)
   const LOT_SIZE = 12, LAND_BASE = 2000, LAND_GROWTH = 1.18;
@@ -42,21 +44,29 @@
   };
   const HALL_UPKEEP = 50, HALL_JOBS = 5;
 
+  // fixed: renda fixa (juros do país). bank: múltiplo dos juros que o banco paga; scare/hit: chance e tamanho da
+  // crise de confiança; fail: chance de o banco quebrar. div: dividendo mensal (% do valor aplicado).
   const ASSETS = [
-    {key: 'poupanca', name: 'Poupança',          icon: '🐖', drift: 0.005,  vol: 0,     desc: 'Segura e sem taxa. Rende pouco.'},
-    {key: 'cdb',      name: 'Renda Fixa (CDB)',  icon: '🏦', drift: 0.0085, vol: 0.002, desc: 'Rende mais que a poupança, quase sem risco.'},
-    {key: 'tesouro',  name: 'Tesouro Direto',    icon: '🏛️', drift: 0.0075, vol: 0.006, desc: 'Governo como devedor. Protege da inflação.'},
-    {key: 'fii',      name: 'Fundo Imobiliário', icon: '🏘️', drift: 0.009,  vol: 0.025, desc: 'Risco moderado, acompanha o mercado.'},
-    {key: 'ouro',     name: 'Ouro',              icon: '🥇', drift: 0.006,  vol: 0.035, desc: 'Sobe nas crises. Bom para se proteger.'},
-    {key: 'etf',      name: 'Fundo de índice',   icon: '🌎', drift: 0.010,  vol: 0.045, desc: 'Um pouco de tudo da bolsa mundial.'},
-    {key: 'dolar',    name: 'Dólar',             icon: '💵', drift: 0.004,  vol: 0.05,  desc: 'Dispara quando o mercado entra em pânico.'},
-    {key: 'acoes',    name: 'Ações',             icon: '📈', drift: 0.012,  vol: 0.07,  desc: 'Pode render muito ou cair forte.'},
-    {key: 'cripto',   name: 'Criptomoeda',       icon: '🪙', drift: 0.015,  vol: 0.16,  desc: 'Altíssimo risco, altíssimo retorno.'},
-    {key: 'startup',  name: 'Startups',          icon: '🚀', drift: 0.025,  vol: 0.28,  desc: 'Quase sempre perde, mas uma pode multiplicar tudo.'},
+    {key: 'poupanca', name: 'Poupança',            icon: '🐖', fixed: true, mult: 0.6, drift: 0, vol: 0,      desc: 'Segura e sem taxa. Rende pouco.'},
+    {key: 'tesouro',  name: 'Tesouro Direto',      icon: '🏛️', fixed: true, mult: 0.92, drift: 0, vol: 0.006, desc: 'Governo como devedor. Acompanha os juros do país.'},
+    {key: 'cdb',      name: 'Banco Seguro (CDB)',  icon: '🏦', fixed: true, bank: true, mult: 0.85, drift: 0, vol: 0.001, scare: 0, fail: 0, desc: 'Banco gigante. Paga menos, mas não quebra.'},
+    {key: 'cdb_b',    name: 'Banco da Cidade (CDB)', icon: '🏢', fixed: true, bank: true, mult: 1.05, drift: 0, vol: 0.002, scare: 0.004, hit: 0.06, fail: 0, desc: 'Paga a média do mercado. Raramente passa aperto.'},
+    {key: 'cdb_c',    name: 'Banco Popular (CDB)', icon: '🏬', fixed: true, bank: true, mult: 1.35, drift: 0, vol: 0.004, scare: 0.01, hit: 0.12, fail: 0.0005, desc: 'Paga bem, mas às vezes tem crise de confiança.'},
+    {key: 'cdb_d',    name: 'Banco Turbo (CDB)',   icon: '💳', fixed: true, bank: true, mult: 2.1, drift: 0, vol: 0.008, scare: 0.015, hit: 0.25, fail: 0.003, desc: 'Promete juros altíssimos, mas pode quebrar.'},
+    {key: 'divid',    name: 'Ações de dividendos', icon: '💎', drift: 0.006, vol: 0.035, div: 0.005, desc: 'Empresas sólidas: crescem pouco e pagam dividendo todo mês.'},
+    {key: 'fii',      name: 'Fundo Imobiliário',   icon: '🏘️', drift: 0.004, vol: 0.025, div: 0.0065, desc: 'Paga aluguel todo mês (dividendo alto), cresce devagar.'},
+    {key: 'ouro',     name: 'Ouro',                icon: '🥇', drift: 0.006, vol: 0.035, desc: 'Sobe nas crises. Bom para se proteger.'},
+    {key: 'etf',      name: 'Fundo de índice',     icon: '🌎', drift: 0.012, vol: 0.045, div: 0.002, desc: 'Um pouco de tudo da bolsa mundial, com dividendo baixo.'},
+    {key: 'dolar',    name: 'Dólar',               icon: '💵', drift: 0.004, vol: 0.05,  desc: 'Dispara quando o mercado entra em pânico.'},
+    {key: 'acoes',    name: 'Ações de crescimento', icon: '📈', drift: 0.016, vol: 0.07, div: 0.001, desc: 'Pode render muito ou cair forte. Dividendo mínimo.'},
+    {key: 'cripto',   name: 'Criptomoeda',         icon: '🪙', drift: 0.022, vol: 0.16, cap: 5000,  desc: 'Altíssimo risco, altíssimo retorno.'},
+    {key: 'startup',  name: 'Startups',            icon: '🚀', drift: 0.03,  vol: 0.28, cap: 3000,  desc: 'Quase sempre perde, mas uma pode multiplicar tudo.'},
   ];
-  const SAFE_ASSETS = ['poupanca', 'cdb', 'tesouro'];
-  const RISKY_ASSETS = ['acoes', 'cripto', 'fii', 'etf', 'startup'];
+  const SAFE_ASSETS = ['poupanca', 'cdb', 'cdb_b', 'tesouro'];
+  const RISKY_ASSETS = ['acoes', 'cripto', 'fii', 'etf', 'startup', 'divid'];
   const GLOBAL_ASSETS = ['ouro', 'dolar', 'etf'];
+  const FIXED_ASSETS = ASSETS.filter(a => a.fixed).map(a => a.key);
+  const RATE_SENSITIVITY = 0.15;   // juros altos puxam para baixo os ativos de risco
 
   // ---------- Equipe: 15 pessoas, 5 por área, 8 níveis cada ----------
   // requires: precisa contratar antes. area: bônus de time completo para quem é da mesma área.
@@ -162,7 +172,7 @@
       tiles, landBought: 0, pop: 20, happy: 55, assets, mods: {econ: 1, econLeft: 0, upkeep: 1, upkeepLeft: 0},
       log: ['Bem-vindo, prefeito! Cuide da cidade e faça o dinheiro render.'],
       report: null, over: null, staff: defaultStaff(), staffSeen: {}, staffStats: {errors: 0, cost: 0},
-      world: newWorld(), lowHappy: 0, goals: {}, netHist: [10000],
+      market: {rate: BASE_RATE, prev: BASE_RATE}, world: newWorld(), lowHappy: 0, goals: {}, netHist: [10000],
     };
   }
 
@@ -206,7 +216,7 @@
   const gridBoost = s => 0.04 * pw(s, 'infra');
   const smogCut = s => Math.min(0.7, 0.07 * pw(s, 'ambiental'));
   const joyBonus = s => 0.6 * pw(s, 'social');
-  const analystEdge = (s, key) => key === 'poupanca' ? 0 : 0.0012 * pw(s, 'analista') + (GLOBAL_ASSETS.indexOf(key) >= 0 ? 0.0012 * pw(s, 'global') : 0);
+  const analystEdge = (s, key) => FIXED_ASSETS.indexOf(key) >= 0 ? 0 : 0.0012 * pw(s, 'analista') + (GLOBAL_ASSETS.indexOf(key) >= 0 ? 0.0012 * pw(s, 'global') : 0);
   const feeRate = s => FEE * Math.max(0, 1 - 0.14 * lv(s, 'corretor'));
   const stopLoss = s => Math.max(0.10, 0.30 - 0.025 * lv(s, 'risco'));
   const shockSoftener = s => Math.min(0.6, 0.05 * pw(s, 'risco'));
@@ -342,6 +352,12 @@
     if (r < -lim) return {icon: '✅', text: 'Está barato agora. Boa hora de comprar.'};
     if (r > lim) return {icon: '⚠️', text: 'Está caro agora. Melhor esperar ou vender um pouco.'};
     return null;
+  }
+  // Quanto o ativo rende hoje por mês: crescimento esperado + dividendo
+  function assetYield(s, key) {
+    const d = ASSETS.find(x => x.key === key), rate = (s.market || {rate: BASE_RATE}).rate;
+    const growth = d.fixed ? rate * d.mult : d.drift - RATE_SENSITIVITY * (rate - BASE_RATE) + analystEdge(s, key);
+    return {growth, div: d.div || 0, total: growth + (d.div || 0)};
   }
   const reserve = (s, a) => 1500 + (a.upkeep + s.pop * BASIC_COST + staffCost(s)) * 2;
 
@@ -636,16 +652,19 @@
     }},
     {w: () => 2, run(s) {
       s.mods.econ = 0.75; s.mods.econLeft = 6;
-      mult(s, {acoes: 0.78, cripto: 0.65, fii: 0.9, etf: 0.85, startup: 0.6, ouro: 1.08, dolar: 1.1});
+      mult(s, {acoes: 0.78, cripto: 0.65, fii: 0.9, etf: 0.85, startup: 0.6, divid: 0.88, ouro: 1.08, dolar: 1.1});
+      s.market.rate = clamp(s.market.rate + 0.0015, MIN_RATE, MAX_RATE);
       note(s, '📉 Crise econômica! Bolsa despenca e o comércio sofre por 6 meses (ouro e dólar sobem).');
     }},
     {w: () => 2, run(s) {
       s.mods.econ = 1.25; s.mods.econLeft = 6;
-      mult(s, {acoes: 1.15, cripto: 1.3, fii: 1.05, etf: 1.1, startup: 1.35, ouro: 0.98, dolar: 0.97});
+      mult(s, {acoes: 1.15, cripto: 1.3, fii: 1.05, etf: 1.1, startup: 1.35, divid: 1.06, ouro: 0.98, dolar: 0.97});
+      s.market.rate = clamp(s.market.rate - 0.002, MIN_RATE, MAX_RATE);
       note(s, '🚀 Boom econômico! Bolsa dispara e o comércio aquece por 6 meses.');
     }},
     {w: () => 2, run(s) {
       s.mods.upkeep = 1.3; s.mods.upkeepLeft = 6; mult(s, {ouro: 1.05, tesouro: 1.03});
+      s.market.rate = clamp(s.market.rate + 0.001, MIN_RATE, MAX_RATE);
       note(s, '🔥 Inflação! Manutenção 30% mais cara por 6 meses.');
     }},
     {w: () => 1, run(s) {
@@ -717,12 +736,23 @@
     }
     if (s.pop > a.housing) s.pop = Math.max(a.housing, s.pop - Math.max(1, (s.pop - a.housing) * 0.3));
 
-    // Mercado
+    // Juros do país e mercado
+    const m = s.market; m.prev = m.rate;
+    m.rate = clamp(m.rate + (BASE_RATE - m.rate) * 0.08 + 0.0004 * gauss(s), MIN_RATE, MAX_RATE);
+    let dividends = 0;
     ASSETS.forEach(d => {
-      const x = s.assets[d.key];
-      x.price *= Math.max(0.2, 1 + d.drift + analystEdge(s, d.key) + d.vol * gauss(s));
+      const x = s.assets[d.key], y = assetYield(s, d.key);
+      x.price = Math.min(d.cap || 1e12, x.price * Math.max(0.2, 1 + y.growth + d.vol * gauss(s)));
+      // Crise de confiança ou quebra de banco
+      if (d.bank) {
+        const r = mulberry(s);
+        if (d.fail && r < d.fail) { x.price *= 0.4; note(s, `💥 O ${d.name.replace(' (CDB)', '')} quebrou! Quem tinha dinheiro lá perdeu boa parte.`); }
+        else if (d.scare && r < d.scare + (d.fail || 0)) { x.price *= 1 - d.hit; note(s, `⚠️ ${d.name.replace(' (CDB)', '')} passou por uma crise de confiança: o CDB caiu ${Math.round(d.hit * 100)}%.`); }
+      }
       x.hist.push(x.price); if (x.hist.length > 36) x.hist.shift();
+      if (d.div && x.units > 0) dividends += x.units * x.price * d.div;
     });
+    s.cash += dividends;
     if (s.mods.econLeft > 0) s.mods.econLeft--;
     if (s.mods.upkeepLeft > 0) s.mods.upkeepLeft--;
 
@@ -749,7 +779,7 @@
       }
     }
 
-    s.report = {taxes, rent, commerce, industry, income, maint, basic, salaries, diplomacy, interest, overdraft, expenses, net: income - expenses};
+    s.report = {taxes, rent, commerce, industry, dividends, income, maint, basic, salaries, diplomacy, interest, overdraft, expenses, net: income + dividends - expenses};
     s.netHist.push(netWorth(s)); if (s.netHist.length > 48) s.netHist.shift();
 
     GOALS.forEach(g => { if (!s.goals[g.id] && g.test(s)) { s.goals[g.id] = s.month; note(s, `🏆 Meta cumprida: ${g.text}!`); } });
@@ -881,7 +911,8 @@
       const spare = s.cash - reserve(s, a) - 3000 - budget;
       if (spare >= 2000) {
         const amt = Math.floor(Math.min(1500 * lv(s, 'corretor'), spare * 0.5));
-        buy(s, 'cdb', amt); note(s, `💼 Corretor aplicou ${money(amt)} em Renda Fixa.`);
+        const alvo = ['cdb', 'cdb_b', 'tesouro'].sort((p, q) => assetYield(s, q).total - assetYield(s, p).total)[0];
+        buy(s, alvo, amt); note(s, `💼 Corretor aplicou ${money(amt)} em ${ASSETS.find(d => d.key === alvo).name}.`);
         if (blunder(s, 'corretor')) note(s, `😅 Corretor errou a conta na aplicação e gastou ${money(lose(s, amt * 0.015 + 100))} para corrigir.`);
       }
     }
@@ -913,11 +944,12 @@
       STAFF_ORDER.forEach(k => { if (!s.staff[k]) s.staff[k] = {hired: false, auto: true, level: 1}; if (!s.staff[k].level) s.staff[k].level = 1; });
       ASSETS.forEach(a => { if (!s.assets[a.key]) s.assets[a.key] = newAsset(); });
       if (!s.world) s.world = newWorld();
+      if (!s.market) s.market = {rate: BASE_RATE, prev: BASE_RATE};
       return s;
     } catch (e) { return null; }
   }
 
-  return {COLS, ROWS: START_ROWS, HALL, BUILDINGS, ASSETS, SAFE_ASSETS, RISKY_ASSETS, GOALS, STAFF, STAFF_ORDER, SALARY_ORDER, AREAS, MAX_LEVEL, NEIGHBORS,
+  return {COLS, ROWS: START_ROWS, HALL, BUILDINGS, ASSETS, SAFE_ASSETS, RISKY_ASSETS, FIXED_ASSETS, BASE_RATE, assetYield, GOALS, STAFF, STAFF_ORDER, SALARY_ORDER, AREAS, MAX_LEVEL, NEIGHBORS,
     hired, active, levelOf, isUnlocked, lockReason, staffCost, salaryOf, efficiency, errorChance, staffInfo, upgrade, upgradeCost, teamBonus,
     loanRate, loanLimit, hire, fire, setAuto, recommend, recCity, recInfra, recGreen, recSocial, needs, advice, hint,
     freeTiles, landCost, buyLand, buildCost, LOT_SIZE, TREATY_COST, TREATY_UPKEEP, LOAN_LIMIT, OVERDRAFT_LIMIT,
