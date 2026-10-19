@@ -43,7 +43,7 @@
       const w = WALLS[h % 4], r = ROOFS[(h >>> 3) % 4];
       if (lv === 1) return [B(0, 0, 0, 0.5, 0.3, 0.44, w), R(0, 0.3, 0, 0.58, 0.24, 0.5, r), B(0.12, 0, 0.23, 0.1, 0.18, 0.02, 0x7a5236)];
       if (lv === 2) return [B(0, 0, 0, 0.56, 0.58, 0.5, w), R(0, 0.58, 0, 0.64, 0.26, 0.56, r), B(0.34, 0, 0.0, 0.16, 0.22, 0.3, 0xd7d7d7), B(-0.08, 0.2, 0.26, 0.12, 0.12, 0.02, 0x6fa8dc), B(0.12, 0.2, 0.26, 0.12, 0.12, 0.02, 0x6fa8dc)];
-      return [B(0, 0, 0, 0.62, 0.62, 0.5, w), R(0, 0.62, 0, 0.7, 0.28, 0.56, r), B(-0.5, 0, 0, 0.34, 0.42, 0.42, w), R(-0.5, 0.42, 0, 0.4, 0.2, 0.48, r), B(0.5, 0, 0, 0.34, 0.42, 0.42, w), R(0.5, 0.42, 0, 0.4, 0.2, 0.48, r),
+      return [B(0, 0, 0, 0.62, 0.62, 0.5, w), R(0, 0.62, 0, 0.7, 0.28, 0.56, r), B(-0.42, 0, 0, 0.26, 0.42, 0.42, w), R(-0.42, 0.42, 0, 0.32, 0.2, 0.48, r), B(0.42, 0, 0, 0.26, 0.42, 0.42, w), R(0.42, 0.42, 0, 0.32, 0.2, 0.48, r),
         B(0, 0, 0.42, 0.5, 0.025, 0.2, 0x5ab4e6), B(-0.12, 0.3, 0.26, 0.12, 0.14, 0.02, 0x6fa8dc), B(0.12, 0.3, 0.26, 0.12, 0.14, 0.02, 0x6fa8dc)];
     },
     predio: (lv, h) => {
@@ -96,21 +96,21 @@
     universidade: (lv) => {
       const p = [B(0, 0, 0, 0.84, 0.34, 0.5, 0xe3d6b8), B(0, 0.34, 0, 0.88, 0.04, 0.54, 0xa39a82), C(0, 0.38, 0, 0.3, 0.14, 0xe3d6b8), T(0, 0.52, 0, 0.3, 0.18, 0x3d85c6)];
       for (let i = -2; i <= 2; i++) p.push(B(i * 0.16, 0, 0.28, 0.04, 0.3, 0.04, 0xffffff));
-      if (lv >= 2) p.push(B(-0.5, 0, 0, 0.3, 0.4, 0.42, 0xe3d6b8));
-      if (lv >= 3) p.push(B(0.5, 0, 0, 0.3, 0.5, 0.42, 0xe3d6b8), B(0, 0, -0.4, 0.8, 0.2, 0.16, 0xd2c6a6));
+      if (lv >= 2) p.push(B(-0.46, 0, 0, 0.26, 0.4, 0.42, 0xe3d6b8));
+      if (lv >= 3) p.push(B(0.46, 0, 0, 0.26, 0.5, 0.42, 0xe3d6b8), B(0, 0, -0.4, 0.8, 0.2, 0.16, 0xd2c6a6));
       return p;
     },
     hospital: (lv) => {
       const hh = 0.4 + 0.22 * (lv - 1), p = [B(0, 0, 0, 0.7, hh, 0.5, 0xf4f6f8), B(0.0, hh, 0.0, 0.5, 0.02, 0.1, 0xe03b3b), B(0.0, hh, 0.0, 0.1, 0.02, 0.5, 0xe03b3b), B(0, 0.06, 0.26, 0.28, 0.16, 0.02, 0x6fa8dc)];
       floors(p, 0.7, 0.5, Math.round(hh / 0.2), 0.04, 0.2, 0x8ea6bd);
-      if (lv >= 2) p.push(B(0.46, 0, 0, 0.26, hh * 0.7, 0.4, 0xe4e8ec));
-      if (lv >= 3) p.push(B(-0.46, 0, 0, 0.26, hh * 0.7, 0.4, 0xe4e8ec), C(0.0, hh + 0.02, 0, 0.3, 0.02, 0xdddddd));
+      if (lv >= 2) p.push(B(0.44, 0, 0, 0.24, hh * 0.7, 0.4, 0xe4e8ec));
+      if (lv >= 3) p.push(B(-0.44, 0, 0, 0.24, hh * 0.7, 0.4, 0xe4e8ec), C(0.0, hh + 0.02, 0, 0.3, 0.02, 0xdddddd));
       return p;
     },
     policia: (lv) => {
       const p = [B(0, 0, 0, 0.6, 0.3 + 0.1 * (lv - 1), 0.46, 0x4a6fa5), B(0, 0.3 + 0.1 * (lv - 1), 0, 0.64, 0.05, 0.5, 0x2e4a73), B(0.22, 0.35, 0.0, 0.1, 0.2, 0.1, 0x2e4a73), B(0.22, 0.55, 0.0, 0.08, 0.05, 0.08, 0xe04b4b), B(-0.12, 0.06, 0.24, 0.22, 0.14, 0.02, 0xdbe7f5)];
-      if (lv >= 2) p.push(B(-0.4, 0, 0, 0.24, 0.26, 0.36, 0x4a6fa5));
-      if (lv >= 3) p.push(B(0.4, 0, 0, 0.24, 0.34, 0.36, 0x4a6fa5), B(0, 0, 0.42, 0.7, 0.02, 0.1, 0x555b66));
+      if (lv >= 2) p.push(B(-0.38, 0, 0, 0.22, 0.26, 0.36, 0x4a6fa5));
+      if (lv >= 3) p.push(B(0.38, 0, 0, 0.22, 0.34, 0.36, 0x4a6fa5), B(0, 0, 0.42, 0.7, 0.02, 0.1, 0x555b66));
       return p;
     },
     bombeiros: (lv) => {
@@ -155,7 +155,7 @@
     try {
       renderer = new T.WebGLRenderer({antialias: true, alpha: true, powerPreference: 'low-power'});
     } catch (e) { return false; }
-    renderer.setPixelRatio(Math.min(root.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(Math.min(root.devicePixelRatio || 1, 1.75));
     scene = new T.Scene();
     camera = new T.PerspectiveCamera(40, 1, 0.1, 400);
     scene.add(new T.HemisphereLight(0xdfeaff, 0x4f5f3e, 0.85));
@@ -187,47 +187,113 @@
   }
 
   // ---------- Montagem da cidade ----------
+  const PITCH = 1.3, SCALE = 0.8;                       // distância entre terrenos (o vão vira rua) e tamanho dos prédios
+  let cars = [], carMeshes = [], clouds = null, cloudData = [], lay = null, carCfg = null;
+  const CAR_COLORS = [0xd9453d, 0x3d85c6, 0xf4b942, 0xf1f1f1, 0x2f2f35, 0x4fae45, 0xa78bfa, 0xff8a3d];
+
+  function disposeMesh(m) { scene.remove(m); m.material.dispose(); if (m.dispose) m.dispose(); }
   function rebuild(s) {
     const T = root.THREE;
-    meshes.forEach(m => { scene.remove(m); m.material.dispose(); m.dispose && m.dispose(); });
-    meshes = [];
-    if (ground) { scene.remove(ground); ground.geometry.dispose(); ground.material.dispose(); }
-    const tiles = s.tiles; let last = 0;
-    tiles.forEach((t, i) => { if (t) last = i; });
+    meshes.forEach(disposeMesh); meshes = []; carMeshes.forEach(disposeMesh); carMeshes = []; if (clouds) { disposeMesh(clouds); clouds = null; }
+    if (ground) { scene.remove(ground); ground.children.forEach(c => { c.geometry.dispose(); c.material.dispose(); }); ground = null; }
+    const tiles = s.tiles; let last = 0, built = 0;
+    tiles.forEach((t, i) => { if (t) { last = i; built++; } });
     const count = Math.min(tiles.length, last + 5);
-    const items = {b: [], c: [], r: [], t: []}, lots = [];
+    const items = {b: [], c: [], r: [], t: []};
     let minx = 1e9, maxx = -1e9, minz = 1e9, maxz = -1e9;
     for (let i = 0; i < count; i++) {
-      const [px, pz] = spiral(i), k = tiles[i];
-      minx = Math.min(minx, px); maxx = Math.max(maxx, px); minz = Math.min(minz, pz); maxz = Math.max(maxz, pz);
-      lots.push([px, pz, k ? 1 : 0.6]);
-      if (!k || !BUILD[k]) continue;
-      const lv = Math.max(1, Math.min(3, (s.lv && s.lv[i]) || 1)), parts = BUILD[k](lv, hash(i));
-      const ry = ((hash(i * 7 + 3) % 4) * Math.PI) / 2 * 0;       // sem giro: as fachadas ficam alinhadas com a rua
-      parts.forEach(([type, x, y, z, sx, sy, sz, col, rot, rz]) => items[type].push([px + x, 0.05 + y, pz + z, sx, sy, sz, col, rot + ry, rz]));
+      const [gx, gz] = spiral(i); minx = Math.min(minx, gx); maxx = Math.max(maxx, gx); minz = Math.min(minz, gz); maxz = Math.max(maxz, gz);
     }
-    const m4 = new T.Matrix4(), q = new T.Quaternion(), e = new T.Euler(), v = new T.Vector3(), sc = new T.Vector3(), col = new T.Color();
-    const make = (geo, list) => {
-      if (!list.length) return;
-      const mesh = new T.InstancedMesh(geo, new T.MeshLambertMaterial({color: 0xffffff}), list.length);
+    for (let i = 0; i < count; i++) {
+      const [gx, gz] = spiral(i), px = gx * PITCH, pz = gz * PITCH, k = tiles[i], h = hash(i);
+      items.b.push([px, 0.02, pz, 0.98, 0.03, 0.98, 0xb9bfc7, 0, 0]);                                  // calçada
+      items.b.push([px, 0.05, pz, 0.82, 0.03, 0.82, k ? GRASS : (h % 3 ? 0x6fb35a : 0x78bd62), 0, 0]);   // terreno
+      if (!k) {                                                                                           // terreno livre: uma ou duas árvores
+        const n = 1 + (h % 2);
+        for (let j = 0; j < n; j++) { const ox = ((h >> (3 + j * 4)) % 7 - 3) * 0.09, oz = ((h >> (5 + j * 4)) % 7 - 3) * 0.09; items.b.push([px + ox, 0.08, pz + oz, 0.03, 0.08, 0.03, 0x6b4a2b, 0, 0]); items.t.push([px + ox, 0.14, pz + oz, 0.17, 0.3, 0.17, 0x2f7d3a, 0, 0]); }
+        continue;
+      }
+      if (!BUILD[k]) continue;
+      const lv = Math.max(1, Math.min(3, (s.lv && s.lv[i]) || 1)), parts = BUILD[k](lv, h);
+      parts.forEach(([type, x, y, z, sx, sy, sz, col, rot, rz]) => items[type].push([px + x * SCALE, 0.08 + y * SCALE, pz + z * SCALE, sx * SCALE, sy * SCALE, sz * SCALE, col, rot, rz]));
+    }
+    // ruas: faixas tracejadas no meio de cada quadra e postes de luz nos cruzamentos
+    const x0 = minx - 1, x1 = maxx, z0 = minz - 1, z1 = maxz, xs = [], zs = [];
+    for (let i = x0; i <= x1; i++) xs.push((i + 0.5) * PITCH);
+    for (let j = z0; j <= z1; j++) zs.push((j + 0.5) * PITCH);
+    for (const x of xs) for (let j = minz - 1; j <= maxz + 1; j++) items.b.push([x, 0.012, j * PITCH, 0.025, 0.006, 0.34, 0xe9e6c8, 0, 0]);
+    for (const z of zs) for (let i = minx - 1; i <= maxx + 1; i++) items.b.push([i * PITCH, 0.012, z, 0.34, 0.006, 0.025, 0xe9e6c8, 0, 0]);
+    xs.forEach((x, a) => zs.forEach((z, b) => {
+      if ((a + b) % 2) return;
+      items.c.push([x + 0.17, 0.0, z + 0.17, 0.025, 0.3, 0.025, 0x5c6470, 0, 0]);
+      items.b.push([x + 0.17, 0.3, z + 0.17, 0.07, 0.025, 0.07, 0xffe9a0, 0, 0]);
+    }));
+    const make = (geo, list, mat) => {
+      if (!list.length) return null;
+      const mesh = new T.InstancedMesh(geo, mat || new T.MeshLambertMaterial({color: 0xffffff}), list.length);
+      const m4 = new T.Matrix4(), q = new T.Quaternion(), e = new T.Euler(), v = new T.Vector3(), sc = new T.Vector3(), col = new T.Color();
       list.forEach((it, n) => {
         e.set(0, it[7], it[8], 'YXZ'); q.setFromEuler(e); v.set(it[0], it[1], it[2]); sc.set(it[3], it[4], it[5]);
-        m4.compose(v, q, sc); mesh.setMatrixAt(n, m4); mesh.setColorAt(n, col.setHex(it[6]));
+        m4.compose(v, q, sc); mesh.setMatrixAt(n, m4); if (it[6] != null) mesh.setColorAt(n, col.setHex(it[6]));
       });
       mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      scene.add(mesh); meshes.push(mesh);
+      scene.add(mesh); return mesh;
     };
-    // terrenos (gramado) e ruas (chão escuro por baixo)
-    const lotMesh = [];
-    lots.forEach(([x, z, f]) => lotMesh.push([x, 0, z, 0.9, 0.05, 0.9, f === 1 ? GRASS : 0x78a85f, 0, 0]));
-    make(geoms.b, lotMesh);
-    make(geoms.b, items.b); make(geoms.c, items.c); make(geoms.r, items.r); make(geoms.t, items.t);
-    const w = maxx - minx + 3, d = maxz - minz + 3;
-    ground = new T.Mesh(new T.PlaneGeometry(w, d), new T.MeshLambertMaterial({color: ROAD}));
-    ground.rotation.x = -Math.PI / 2; ground.position.set((minx + maxx) / 2, 0.01, (minz + maxz) / 2); scene.add(ground);
-    view.tx = (minx + maxx) / 2; view.tz = (minz + maxz) / 2;
-    view.span = Math.max(maxx - minx, maxz - minz) + 3;
+    ['b', 'c', 'r', 't'].forEach(k => { const m = make(geoms[k], items[k]); if (m) meshes.push(m); });
+    // chão: gramado enorme (some na neblina) e o asfalto só onde tem rua
+    const gw = (maxx - minx + 4) * PITCH, gd = (maxz - minz + 4) * PITCH, cx = (minx + maxx) / 2 * PITCH, cz = (minz + maxz) / 2 * PITCH;
+    ground = new T.Group();
+    const terrain = new T.Mesh(new T.PlaneGeometry(400, 400), new T.MeshLambertMaterial({color: 0x3f7a35})); terrain.rotation.x = -Math.PI / 2; terrain.position.set(cx, -0.02, cz);
+    const asphalt = new T.Mesh(new T.PlaneGeometry(gw - 2 * PITCH + 0.6, gd - 2 * PITCH + 0.6), new T.MeshLambertMaterial({color: ROAD})); asphalt.rotation.x = -Math.PI / 2; asphalt.position.set(cx, 0.005, cz);
+    ground.add(terrain, asphalt); scene.add(ground);
+    lay = {minx: (minx - 1) * PITCH, maxx: (maxx + 1) * PITCH, minz: (minz - 1) * PITCH, maxz: (maxz + 1) * PITCH, xs, zs};
+    view.tx = cx; view.tz = cz;
+    view.span = Math.max(maxx - minx, maxz - minz) * PITCH + 3;
     if (!view.touched) view.dist = fitDist();
+    buildTraffic(built);
+  }
+
+  // Carros nas ruas e nuvens passando: poucas peças que se movem (só enquanto o mapa está aberto)
+  function buildTraffic(built) {
+    const T = root.THREE, n = Math.max(6, Math.min(60, Math.round(built * 0.7)));
+    cars = [];
+    for (let i = 0; i < n; i++) {
+      const alongZ = i % 2 === 0, lines = alongZ ? lay.xs : lay.zs, dir = hash(i * 3 + 1) % 2 ? 1 : -1, lo = alongZ ? lay.minz : lay.minx, hi = alongZ ? lay.maxz : lay.maxx;
+      cars.push({alongZ, line: lines[hash(i * 5 + 2) % lines.length] + dir * 0.06, dir, speed: 0.5 + (hash(i * 7 + 3) % 100) / 100 * 0.7, t: lo + (hash(i * 11 + 4) % 1000) / 1000 * (hi - lo), lo, hi, color: CAR_COLORS[hash(i * 13 + 5) % CAR_COLORS.length]});
+    }
+    const mk = (geo, count) => { const m = new T.InstancedMesh(geo, new T.MeshLambertMaterial({color: 0xffffff}), count); m.instanceMatrix.setUsage(T.DynamicDrawUsage); scene.add(m); carMeshes.push(m); return m; };
+    carCfg = {body: mk(geoms.b, n), cabin: mk(geoms.b, n), m4: new T.Matrix4(), q: new T.Quaternion(), e: new T.Euler(), v: new T.Vector3(), sc: new T.Vector3(), col: new T.Color()};
+    cars.forEach((c, i) => { carCfg.body.setColorAt(i, carCfg.col.setHex(c.color)); carCfg.cabin.setColorAt(i, carCfg.col.setHex(0xcfe3f2)); });
+    carCfg.body.instanceColor.needsUpdate = true; carCfg.cabin.instanceColor.needsUpdate = true;
+    // nuvens
+    cloudData = [];
+    const w = lay.maxx - lay.minx + 12, d = lay.maxz - lay.minz + 12;
+    for (let i = 0; i < 4; i++) cloudData.push({x: lay.minx - 6 + (hash(i * 17 + 9) % 1000) / 1000 * w, z: lay.minz - 6 + (hash(i * 19 + 7) % 1000) / 1000 * d, y: 6 + (i % 3) * 0.6, s: 0.5 + (hash(i * 23) % 50) / 100, sp: 0.12 + (i % 3) * 0.05});
+    clouds = new T.InstancedMesh(geoms.b, new T.MeshLambertMaterial({color: 0xffffff, transparent: true, opacity: 0.7}), cloudData.length * 3);
+    clouds.instanceMatrix.setUsage(T.DynamicDrawUsage); scene.add(clouds);
+    cloudBounds = {x0: lay.minx - 6, x1: lay.maxx + 6};
+    animate(0);
+  }
+  let cloudBounds = null;
+  function animate(dt) {
+    if (!carCfg || !lay) return;
+    const {body, cabin, m4, q, e, v, sc} = carCfg;
+    cars.forEach((c, i) => {
+      c.t += c.dir * c.speed * dt; if (c.t > c.hi) c.t = c.lo; else if (c.t < c.lo) c.t = c.hi;
+      const x = c.alongZ ? c.line : c.t, z = c.alongZ ? c.t : c.line;
+      e.set(0, c.alongZ ? Math.PI / 2 : 0, 0); q.setFromEuler(e);
+      v.set(x, 0.07, z); sc.set(0.26, 0.09, 0.13); m4.compose(v, q, sc); body.setMatrixAt(i, m4);
+      v.set(x, 0.15, z); sc.set(0.13, 0.08, 0.115); m4.compose(v, q, sc); cabin.setMatrixAt(i, m4);
+    });
+    body.instanceMatrix.needsUpdate = true; cabin.instanceMatrix.needsUpdate = true;
+    if (clouds) {
+      let n = 0; e.set(0, 0, 0); q.setFromEuler(e);
+      cloudData.forEach(c => {
+        c.x += c.sp * dt; if (c.x > cloudBounds.x1) c.x = cloudBounds.x0;
+        [[0, 0, 1.0, 0.18, 0.6], [0.35 * c.s, 0.03, 0.7, 0.14, 0.45], [-0.3 * c.s, -0.02, 0.6, 0.12, 0.4]].forEach(([ox, oy, w, h, d]) => { v.set(c.x + ox, c.y + oy, c.z); sc.set(w * c.s, h, d * c.s); m4.compose(v, q, sc); clouds.setMatrixAt(n++, m4); });
+      });
+      clouds.instanceMatrix.needsUpdate = true;
+    }
   }
 
   // distância da câmera para a cidade caber na tela (em pé a tela é estreita, então afasta mais)
@@ -239,18 +305,24 @@
     const T = root.THREE, a = state, poll = a ? Math.min(1, (a.pollution || 0) / 20) : 0;
     const c = new T.Color(0x1b3350).lerp(new T.Color(0x6b6a55), poll);
     if (host) host.style.background = `linear-gradient(#${new T.Color(0x10243b).lerp(new T.Color(0x77705a), poll).getHexString()},#${c.getHexString()})`;
-    scene.fog = new T.Fog(c.getHex(), 18, 60 - 28 * poll);
+    scene.fog = new T.Fog(c.getHex(), 30, 120 - 50 * poll);
   }
 
   function place() {
     const cp = Math.cos(view.pitch), d = view.dist;
     camera.position.set(view.tx + Math.sin(view.yaw) * cp * d, Math.sin(view.pitch) * d, view.tz + Math.cos(view.yaw) * cp * d);
     camera.lookAt(view.tx, 0.2, view.tz);
+    if (scene.fog) { scene.fog.near = d * 0.8; scene.fog.far = d * 2.4; }
   }
-  function frame() {
+  let lastTs = 0;
+  function frame(ts) {
     raf = 0;
-    if (!dirty || !host) return;
-    dirty = false; place(); renderer.render(scene, camera);
+    if (!host) return;
+    if (ts - lastTs >= 33) {                                // 30 quadros por segundo bastam e poupam bateria
+      const dt = Math.min(0.1, (ts - lastTs) / 1000); lastTs = ts;
+      animate(dt); place(); renderer.render(scene, camera);
+    }
+    raf = requestAnimationFrame(frame);
   }
   function schedule() { if (!raf && host) raf = requestAnimationFrame(frame); }
 
@@ -294,7 +366,7 @@
       resize(); dirty = true; schedule();
     },
     hide() { if (raf) cancelAnimationFrame(raf); raf = 0; host = null; boundTo = null; if (ro) { ro.disconnect(); ro = null; } if (renderer && renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement); },
-    _spiral: spiral, _parts: BUILD, view,
+    _spiral: spiral, _parts: BUILD, _cars: () => cars, view,
   };
   root.City3D = City3D;
 })(typeof window !== 'undefined' ? window : globalThis);
