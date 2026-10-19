@@ -62,6 +62,11 @@
     reciclagem:  {name: 'Usina de reciclagem', icon: '♻️', cost: 3500, upkeep: 40, pollution: -6, profit: 60, jobs: 6, kind: 'Ambiente', desc: 'Limpa bem o ar e rende um lucro com o material vendido.'},
   };
   const HALL_UPKEEP = 50, HALL_JOBS = 5;
+  // Gastos públicos: tudo que é do governo (serviços, escolas, polícia, energia, água, meio ambiente) custa manutenção,
+  // e cada unidade a mais do mesmo tipo custa mais que a anterior (+10% por unidade já existente). A base é 30% maior que a de um prédio privado.
+  const PUBLIC_ESC = 0.10, PUBLIC_BASE = 1.3;
+  const isPublic = k => !!BUILDINGS[k] && BUILDINGS[k].kind !== 'Privado';
+  const upkeepTotal = (k, n) => { const b = BUILDINGS[k]; return b.kind === 'Privado' ? b.upkeep * n : b.upkeep * PUBLIC_BASE * (n + PUBLIC_ESC * n * (n - 1) / 2); };
 
   // ---------- Mundo: países com relação, economia, empréstimos, política e bolsa de valores ----------
   // eco: oscilação da economia do país; mkt: crescimento e risco da bolsa dele
@@ -109,38 +114,38 @@
   const RATE_SENSITIVITY = 0.15;   // juros altos puxam para baixo os ativos de risco
 
   // ---------- Equipe: 15 pessoas, 5 por área, 8 níveis cada ----------
-  // mentor: quem supervisiona e corrige os erros dessa pessoa (precisa ser contratado ANTES, senão ela erra muito e rende metade).
+  // Todos são iguais nas regras (sem supervisor, sem ordem): o que muda é quanto cada um rende.
   // area: bônus de time completo para quem é da mesma área.
   const STAFF = {
-    arquiteto:  {area: 'obras', name: 'Arquiteto', icon: '📐', salary: 45, mentor: 'gerente', pop: 40,
+    arquiteto:  {area: 'obras', name: 'Arquiteto', icon: '📐', salary: 45, pop: 40,
       desc: 'Constrói moradias e empregos quando a cidade precisa e consegue desconto em todas as obras da cidade.'},
-    obras:      {area: 'obras', name: 'Gerente de Obras', icon: '🧰', salary: 35, mentor: 'arquiteto', pop: 70,
+    obras:      {area: 'obras', name: 'Gerente de Obras', icon: '🧰', salary: 35, pop: 70,
       desc: 'Corta os custos de manutenção e dos serviços básicos da cidade.'},
-    infra:      {area: 'obras', name: 'Engenheiro de Infraestrutura', icon: '🔧', salary: 30, mentor: 'arquiteto', pop: 90,
+    infra:      {area: 'obras', name: 'Engenheiro de Infraestrutura', icon: '🔧', salary: 30, pop: 90,
       desc: 'Constrói energia, água e esgoto quando faltam e faz as redes renderem mais.'},
-    ambiental:  {area: 'obras', name: 'Engenheiro Ambiental', icon: '🌿', salary: 25, mentor: 'infra', pop: 130,
+    ambiental:  {area: 'obras', name: 'Engenheiro Ambiental', icon: '🌿', salary: 25, pop: 130,
       desc: 'Reduz a poluição e constrói filtros e florestas quando o ar piora.'},
-    social:     {area: 'obras', name: 'Planejador Social', icon: '🤲', salary: 30, mentor: 'obras', pop: 110,
+    social:     {area: 'obras', name: 'Planejador Social', icon: '🤲', salary: 30, pop: 110,
       desc: 'Constrói escolas, hospitais, delegacias e parques quando faltam e deixa o povo mais feliz.'},
-    analista:   {area: 'invest', name: 'Analista de Mercado', icon: '📊', salary: 45, mentor: 'gerente', nw: 40000,
+    analista:   {area: 'invest', name: 'Analista de Mercado', icon: '📊', salary: 45, nw: 40000,
       desc: 'Avisa quando um investimento está caro ou barato e melhora o retorno da carteira.'},
-    corretor:   {area: 'invest', name: 'Corretor', icon: '💼', salary: 30, mentor: 'analista', nw: 70000,
+    corretor:   {area: 'invest', name: 'Corretor', icon: '💼', salary: 30, nw: 70000,
       desc: 'Corta as taxas de corretagem e aplica parte das sobras em renda fixa.'},
-    risco:      {area: 'invest', name: 'Gestor de Risco', icon: '🛡️', salary: 45, mentor: 'analista', nw: 90000,
+    risco:      {area: 'invest', name: 'Gestor de Risco', icon: '🛡️', salary: 45, nw: 90000,
       desc: 'Vende o que despenca, suaviza as quedas das crises e protege sua carteira.'},
-    global:     {area: 'invest', name: 'Analista Global', icon: '🌍', salary: 55, mentor: 'risco', nw: 200000,
+    global:     {area: 'invest', name: 'Analista Global', icon: '🌍', salary: 55, nw: 200000,
       desc: 'Entende o mercado mundial: melhora o retorno de ouro, dólar e fundo de índice.'},
-    contador:   {area: 'invest', name: 'Contador', icon: '🧮', salary: 35, mentor: 'analista', nw: 50000,
+    contador:   {area: 'invest', name: 'Contador', icon: '🧮', salary: 35, nw: 50000,
       desc: 'Melhora a arrecadação de impostos da cidade.'},
-    gerente:    {area: 'fin', name: 'Gerente Financeiro', icon: '🏦', salary: 35, mentor: null, pop: 80,
+    gerente:    {area: 'fin', name: 'Gerente Financeiro', icon: '🏦', salary: 35, pop: 80,
       desc: 'Paga dívidas quando sobra dinheiro, pede empréstimo para você não ficar no vermelho e consegue juros menores.'},
-    tesoureiro: {area: 'fin', name: 'Tesoureiro', icon: '🏛️', salary: 40, mentor: 'gerente', pop: 150,
+    tesoureiro: {area: 'fin', name: 'Tesoureiro', icon: '🏛️', salary: 40, pop: 150,
       desc: 'Aumenta seu limite de crédito e reduz os juros do cheque especial.'},
-    diplomata:  {area: 'fin', name: 'Diplomata', icon: '🤝', salary: 40, mentor: 'gerente', pop: 120,
+    diplomata:  {area: 'fin', name: 'Diplomata', icon: '🤝', salary: 40, pop: 120,
       desc: 'Cuida da relação com os vizinhos, manda presentes quando esfria e melhora os tratados.'},
-    economista: {area: 'fin', name: 'Economista', icon: '📈', salary: 50, mentor: 'diplomata', pop: 250,
+    economista: {area: 'fin', name: 'Economista', icon: '📈', salary: 50, pop: 250,
       desc: 'Amortece as crises e faz o comércio render mais.'},
-    auditor:    {area: 'fin', name: 'Auditor', icon: '⚖️', salary: 45, mentor: 'tesoureiro', pop: 300,
+    auditor:    {area: 'fin', name: 'Auditor', icon: '⚖️', salary: 45, pop: 300,
       desc: 'Reduz os erros de toda a equipe e recupera parte do dinheiro perdido em erros.'},
   };
   // O que cada pessoa passa a fazer em cada nível
@@ -157,8 +162,6 @@
     diplomata: [[1, 'Manda presentes quando a relação esfria'], [2, 'Decide as questões políticas'], [3, 'Assina tratados comerciais'], [4, 'Decide os pedidos de empréstimo']],
   };
   const STAFF_ORDER = Object.keys(STAFF);
-  // A ordem certa para montar a equipe: cada um depois do seu supervisor
-  const HIRE_ORDER = ['gerente', 'arquiteto', 'analista', 'obras', 'tesoureiro', 'corretor', 'infra', 'social', 'diplomata', 'risco', 'contador', 'ambiental', 'economista', 'global', 'auditor'];
   const SALARY_ORDER = STAFF_ORDER;
   const AREAS = [
     ['obras', '🏗️ Construção e cidade', ['arquiteto', 'obras', 'infra', 'ambiental', 'social']],
@@ -249,13 +252,8 @@
       ? {early: true, text: `Ainda cedo: ${f.name} só compensa a partir de uns ${need.join(' e ')}. Antes disso o salário pesa mais que o ganho.`}
       : {early: false, text: null};
   }
-  // Tudo que o jogador deveria ler antes de contratar
-  function hireWarnings(s, k) {
-    const out = [], o = orderWarning(s, k), r = readiness(s, k);
-    if (o) out.push(o);
-    if (r.early) out.push(r.text);
-    return out;
-  }
+  // Aviso (não proíbe nada): contratar muito cedo é gastar salário sem retorno
+  function hireWarnings(s, k) { const r = readiness(s, k); return r.early ? [r.text] : []; }
   const isUnlocked = (s, k) => lockReason(s, k) === null;
   // Eficiência: 1 = dá conta da cidade; menos que isso = sobrecarregado
   const capacityOf = (s, k) => CAPACITY[levelOf(s, k) - 1] || 0;
@@ -263,41 +261,30 @@
   // Bônus de time completo: +4% para cada colega da mesma área contratado
   const teamBonus = (s, k) => 1 + TEAM_BONUS * (STAFF_ORDER.filter(x => STAFF[x].area === STAFF[k].area && hired(s, x)).length - 1);
   // "Nível efetivo": nível × eficiência × bônus de time (é o que vira efeito no jogo)
-  // Supervisão: o supervisor (mentor) precisa estar contratado e ter pelo menos metade do nível dela
-  function supervision(s, k) {
-    const m = STAFF[k].mentor;
-    if (!m) return {f: 1, err: 0, state: 'ok', mentor: null};
-    if (!hired(s, m)) return {f: 0.5, err: 0.30, state: 'missing', mentor: m};
-    if (levelOf(s, m) * 2 < levelOf(s, k)) return {f: 0.75, err: 0.12, state: 'weak', mentor: m};
-    return {f: 1, err: 0, state: 'ok', mentor: m};
-  }
-  function orderWarning(s, k) {
-    const m = STAFF[k].mentor;
-    if (!m || hired(s, m)) return null;
-    return `Sem ${STAFF[m].name} contratado antes, ${STAFF[k].name} erra muito, rende só metade e ninguém corrige os erros dele.`;
-  }
-  const nextInOrder = s => HIRE_ORDER.find(k => !hired(s, k)) || null;
-  // "Nível efetivo": nível × eficiência × bônus de time × supervisão (é o que vira efeito no jogo)
   // Retorno decrescente: o nível 8 não rende 8 vezes o nível 1 (freia o efeito bola de neve)
   const LV_POW = 0.9, TEAM_BONUS = 0.03;
-  const pw = (s, k) => hired(s, k) ? Math.pow(levelOf(s, k), LV_POW) * efficiency(s, k) * teamBonus(s, k) * supervision(s, k).f : 0;
-  // Nível usado nos efeitos e nas habilidades: sem supervisão, é como se fosse de nível mais baixo
-  const lv = (s, k) => hired(s, k) ? Math.max(1, Math.round(levelOf(s, k) * supervision(s, k).f)) : 0;
+  const pw = (s, k) => hired(s, k) ? Math.pow(levelOf(s, k), LV_POW) * efficiency(s, k) * teamBonus(s, k) : 0;
+  const lv = (s, k) => levelOf(s, k);
   // Chance de errar: 30% normalmente, mais se estiver sobrecarregado, menos com Auditor
-  const errorChance = (s, k) => clamp(ERROR_BASE + 0.25 * (1 - efficiency(s, k)) + supervision(s, k).err - 0.03 * lv(s, 'auditor'), 0.08, 0.85);
+  const errorChance = (s, k) => clamp(ERROR_BASE + 0.25 * (1 - efficiency(s, k)) - 0.03 * lv(s, 'auditor'), 0.08, 0.6);
 
   const loanLimit = s => LOAN_LIMIT + 5000 * lv(s, 'tesoureiro');
   const loanRate = s => LOAN_RATE - (hired(s, 'gerente') ? 0.003 + 0.001 * pw(s, 'gerente') : 0) - 0.0008 * pw(s, 'tesoureiro');
   const overdraftRate = s => OVERDRAFT_RATE * (1 - 0.06 * lv(s, 'tesoureiro'));
   const upkeepCut = s => Math.min(0.5, 0.09 * pw(s, 'obras'));
-  const taxBoost = s => 0.04 * pw(s, 'contador');
+  const taxBoost = s => 0.06 * pw(s, 'contador');
   const buildDiscount = s => hired(s, 'arquiteto') ? 0.08 + 0.025 * lv(s, 'arquiteto') : 0;
   const gridBoost = s => 0.04 * pw(s, 'infra');
   const smogCut = s => Math.min(0.7, 0.07 * pw(s, 'ambiental'));
   const joyBonus = s => 0.6 * pw(s, 'social');
-  const analystEdge = (s, key) => FIXED_ASSETS.indexOf(key) >= 0 ? 0 : 0.0012 * pw(s, 'analista') + (GLOBAL_ASSETS.indexOf(key) >= 0 ? 0.0012 * pw(s, 'global') : 0);
+  const analystEdge = (s, key) => {
+    if (key === 'poupanca') return 0;
+    const brokerEdge = 0.0007 * pw(s, 'corretor');   // o corretor consegue melhores condições até na renda fixa
+    if (FIXED_ASSETS.indexOf(key) >= 0) return brokerEdge;
+    return brokerEdge + 0.0018 * pw(s, 'analista') + 0.0010 * pw(s, 'risco') + (GLOBAL_ASSETS.indexOf(key) >= 0 ? 0.0018 * pw(s, 'global') : 0);
+  };
   const feeRate = s => FEE * Math.max(0, 1 - 0.14 * lv(s, 'corretor'));
-  const stopLoss = s => Math.max(0.10, 0.30 - 0.025 * lv(s, 'risco'));
+  const stopLoss = s => Math.max(0.25, 0.45 - 0.025 * lv(s, 'risco'));
   const shockSoftener = s => Math.min(0.6, 0.05 * pw(s, 'risco'));
   const econSoftener = s => Math.min(0.6, 0.06 * pw(s, 'economista'));
   const auditRefund = s => Math.min(0.5, 0.04 * lv(s, 'auditor'));
@@ -324,22 +311,19 @@
       case 'infra': lines.push(`Redes rendem +${pct(gridBoost(s))}`, `Manutenção dos serviços -${pct(Math.min(0.5, 0.06 * pw(s, 'infra')))}`); break;
       case 'ambiental': lines.push(`Poluição -${pct(smogCut(s))}`, `Manutenção ambiental -${pct(Math.min(0.5, 0.06 * pw(s, 'ambiental')))}`); break;
       case 'social': lines.push(`Felicidade +${(joyBonus(s)).toFixed(1).replace('.', ',')}`, `Manutenção dos públicos -${pct(Math.min(0.5, 0.05 * pw(s, 'social')))}`); break;
-      case 'analista': lines.push(`Retorno +${rate2(analystEdge(s, 'acoes'))} ao mês`); break;
+      case 'analista': lines.push(`Retorno dos investimentos de risco +${rate2(0.0018 * pw(s, 'analista'))} ao mês`); break;
       case 'corretor': lines.push(`Taxa de corretagem ${rate2(feeRate(s))}`, `Aplica até ${money(1500 * L)} por mês`); break;
       case 'risco': lines.push(`Vende se cair ${pct(stopLoss(s))}`, `Crises doem ${pct(shockSoftener(s))} menos`); break;
       case 'global': lines.push(`Ouro, dólar e índice +${rate2(analystEdge(s, 'ouro') - analystEdge(s, 'acoes'))} ao mês`); break;
       case 'contador': lines.push(`Impostos +${pct(taxBoost(s))}`); break;
-      case 'gerente': lines.push(`Juros de ${rate2(loanRate(s))} ao mês`, `Caixa parado rende ${rate2(0.0005 * pw(s, 'gerente'))} ao mês`); break;
+      case 'gerente': lines.push(`Juros de ${rate2(loanRate(s))} ao mês`, `Caixa parado rende ${rate2(0.0012 * pw(s, 'gerente'))} ao mês`); break;
       case 'tesoureiro': lines.push(`Limite de crédito ${money(loanLimit(s))}`, `Juros do vermelho ${rate2(overdraftRate(s))}`); break;
-      case 'diplomata': lines.push(`Relações +${(0.15 * pw(s, 'diplomata')).toFixed(1).replace('.', ',')} por mês`, `Tratados rendem +${pct(0.02 * pw(s, 'diplomata'))}`); break;
-      case 'economista': lines.push(`Crises doem ${pct(econSoftener(s))} menos`, `Receita da cidade +${pct(0.015 * pw(s, 'economista'))}`); break;
+      case 'diplomata': lines.push(`Relações +${(0.8 * pw(s, 'diplomata')).toFixed(1).replace('.', ',')} por mês`, `Tratados rendem +${pct(0.02 * pw(s, 'diplomata'))}`); break;
+      case 'economista': lines.push(`Crises doem ${pct(econSoftener(s))} menos`, `Receita da cidade +${pct(0.025 * pw(s, 'economista'))}`); break;
       case 'auditor': lines.push(`Erros -${Math.round(3 * L)} pontos`, `Recupera ${pct(auditRefund(s))} do prejuízo`); break;
     }
-    const sup = supervision(s, k), skills = (SKILLS[k] || []).map(([lvl, text]) => ({lvl, text, on: lv(s, k) >= lvl}));
-    const supInfo = {state: sup.state, mentor: sup.mentor, mentorName: sup.mentor ? STAFF[sup.mentor].name : null, factor: sup.f, effectiveLevel: lv(s, k),
-      note: sup.state === 'missing' ? `Sem ${STAFF[sup.mentor].name}: erra muito, rende metade e ninguém corrige os erros.`
-        : sup.state === 'weak' ? `${STAFF[sup.mentor].name} é de nível baixo para supervisionar (precisa de pelo menos nível ${Math.ceil(L / 2)}).` : null};
-    return {level: L, supervision: supInfo, skills, salary: salaryOf(s, k), efficiency: efficiency(s, k), capacity: capacityOf(s, k), errorChance: errorChance(s, k),
+    const skills = (SKILLS[k] || []).map(([lvl, text]) => ({lvl, text, on: L >= lvl}));
+    return {level: L, skills, salary: salaryOf(s, k), efficiency: efficiency(s, k), capacity: capacityOf(s, k), errorChance: errorChance(s, k),
       teamBonus: teamBonus(s, k), lines, nextCost: upgradeCost(s, k), nextSalary: L < MAX_LEVEL ? salaryAt(k, L + 1) : null};
   }
 
@@ -350,7 +334,7 @@
     if (why) return {ok: false, msg: why + '.'};
     if (s.cash < STAFF[k].salary) return {ok: false, msg: 'Dinheiro insuficiente para o 1º salário.'};
     s.staff[k] = {hired: true, auto: true, level: 1};
-    return {ok: true, warn: orderWarning(s, k), warnings: hireWarnings(s, k)};
+    return {ok: true, warnings: hireWarnings(s, k)};
   }
   function fire(s, k) {
     if (!hired(s, k)) return {ok: false, msg: 'Não está contratado.'};
@@ -478,13 +462,26 @@
     const happy = clamp(25 + 12 * cov.edu + 15 * cov.health + 12 * cov.safety + 8 * cov.park + 25 * empRate
       - pollution + taxEffect - 18 * (1 - cov.power) - 15 * (1 - cov.water) - 10 * (1 - cov.sewage) + joyBonus(s), 0, 100);
     let upkeep = HALL_UPKEEP;
-    for (const k in c) if (BUILDINGS[k]) upkeep += BUILDINGS[k].upkeep * c[k];
+    for (const k in c) if (BUILDINGS[k]) upkeep += upkeepTotal(k, c[k]);
     return {c, housing, jobs, workers, employed, empRate, cov, pollution, taxEffect, happy, upkeep, sum,
       powerDeficit: Math.max(0, powerDemand - powerSupply), waterDeficit: Math.max(0, waterDemand - waterSupply),
       sewageDeficit: Math.max(0, sewageDemand - sewageSupply)};
   }
 
   function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
+
+  // Quanto custa por mês (já com tudo aplicado) manter n unidades de um tipo, e a próxima unidade
+  const maintScale = s => FLOW * COST_HARD * pressure(s) * (1 - upkeepCut(s));
+  function upkeepInfo(s, k) {
+    const n = counts(s)[k] || 0, f = maintScale(s);
+    return {n, now: upkeepTotal(k, n) * f, next: (upkeepTotal(k, n + 1) - upkeepTotal(k, n)) * f, first: upkeepTotal(k, 1) * f, public: isPublic(k)};
+  }
+  // Resumo dos gastos públicos do governo
+  function publicCosts(s) {
+    const c = counts(s), rows = [];
+    Object.keys(BUILDINGS).forEach(k => { if (isPublic(k) && c[k]) { const i = upkeepInfo(s, k); rows.push({key: k, n: c[k], total: i.now, next: i.next, first: i.first, extra: i.now - i.first * c[k]}); } });
+    return {rows, total: rows.reduce((t, r) => t + r.total, 0), extra: rows.reduce((t, r) => t + r.extra, 0)};
+  }
 
   function holdingsValue(s) {
     return ASSETS.reduce((t, a) => t + s.assets[a.key].units * s.assets[a.key].price, 0);
@@ -639,9 +636,9 @@
   }
   // Dilemas políticos
   function dilemmaMaker(s) {
-    const keys = NEIGHBORS.map(n => n.key), a = keys[Math.floor(mulberry(s) * keys.length)];
-    let b = keys[Math.floor(mulberry(s) * keys.length)]; if (b === a) b = keys[(keys.indexOf(a) + 1) % keys.length];
-    const A = nb(a), B = nb(b), kind = Math.floor(mulberry(s) * 4);
+    const keys = NEIGHBORS.map(n => n.key), a = keys[Math.floor(worldRand(s) * keys.length)];
+    let b = keys[Math.floor(worldRand(s) * keys.length)]; if (b === a) b = keys[(keys.indexOf(a) + 1) % keys.length];
+    const A = nb(a), B = nb(b), kind = Math.floor(worldRand(s) * 4);
     if (kind === 0) return {text: `${A.icon} ${A.name} e ${B.icon} ${B.name} brigaram por causa de comércio e pedem que você escolha um lado.`, left: 6, options: [
       {label: `Apoiar ${A.name}`, rel: {[a]: 8, [b]: -6}}, {label: `Apoiar ${B.name}`, rel: {[a]: -6, [b]: 8}}, {label: 'Ficar neutro', rel: {[a]: -2, [b]: -2}}]};
     if (kind === 1) return {text: '🌍 Uma conferência internacional pede metas verdes de todos os países.', left: 6, options: [
@@ -669,6 +666,15 @@
       rate: foreignRate(s, key), limit: foreignLimit(s, key), giftCd: w.giftCd[key]};
   }
 
+  // Sorteio próprio do mundo para as coisas que dependem do que a equipe decide (calotes, pedidos, dilemas)
+  function worldRand(s) {
+    if (s.wseed == null) s.wseed = (s.seed * 13 + 5) | 0;
+    s.wseed = (s.wseed + 0x6D2B79F5) | 0;
+    let t = s.wseed;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
   function worldStep(s) {
     const w = s.world;
     NEIGHBORS.forEach(n => {
@@ -677,7 +683,7 @@
       // a bolsa do país acompanha a economia dele
       const bx = s.assets['b_' + k]; if (bx) bx.price = Math.max(1, bx.price * clamp(Math.pow(w.econ[k] / old, 1.5), 0.5, 1.6));
       // a relação esfria sozinha; o Diplomata ajuda a manter
-      w.rel[k] = clamp(w.rel[k] + (50 - w.rel[k]) * 0.02 + 0.15 * pw(s, 'diplomata'), 0, 100);
+      w.rel[k] = clamp(w.rel[k] + (50 - w.rel[k]) * 0.02 + 0.8 * pw(s, 'diplomata'), 0, 100);
       if (w.giftCd[k] > 0) w.giftCd[k]--;
       if (w.treaty[k] && w.rel[k] < 40) { w.treaty[k] = false; worldNote(s, `📜 O tratado com ${n.name} acabou porque a relação esfriou.`); }
     });
@@ -689,7 +695,7 @@
     // Pagamentos de quem me deve
     w.lent = w.lent.filter(l => {
       const risk = w.econ[l.who] < 0.9 ? 0.015 : 0.003;
-      if (mulberry(s) < risk) { addRel(s, l.who, -4); worldNote(s, `💸 ${nb(l.who).name} deu calote! Você perdeu o que faltava receber.`); return false; }
+      if (worldRand(s) < risk) { addRel(s, l.who, -4); worldNote(s, `💸 ${nb(l.who).name} deu calote! Você perdeu o que faltava receber.`); return false; }
       s.cash += l.monthly; l.left--;
       if (l.left <= 0) { addRel(s, l.who, 4); worldNote(s, `🤝 ${nb(l.who).name} quitou o empréstimo e agradeceu.`); return false; }
       return true;
@@ -697,16 +703,16 @@
 
     // Pedido de empréstimo (depois do primeiro ano)
     if (w.request) { w.request.left--; if (w.request.left <= 0) { addRel(s, w.request.who, -3); worldNote(s, `🙁 ${nb(w.request.who).name} ficou chateado porque você ignorou o pedido.`); w.request = null; } }
-    else if (s.month > 12 && s.cash > 3000 && mulberry(s) < 0.06) {
-      const cand = NEIGHBORS.filter(n => w.rel[n.key] >= 45), n = cand[Math.floor(mulberry(s) * cand.length)];
+    else if (s.month > 12 && s.cash > 3000 && worldRand(s) < 0.06) {
+      const cand = NEIGHBORS.filter(n => w.rel[n.key] >= 45), n = cand[Math.floor(worldRand(s) * cand.length)];
       if (n) {
-        w.request = {who: n.key, amount: Math.round((1000 + mulberry(s) * 2000) / 250) * 250, months: 12, rate: 0.01, left: 3};
+        w.request = {who: n.key, amount: Math.round((1000 + worldRand(s) * 2000) / 250) * 250, months: 12, rate: 0.01, left: 3};
         worldNote(s, `📨 ${n.name} pediu um empréstimo de ${money(w.request.amount)}.`);
       }
     }
     // Dilema político
     if (w.dilemma) { w.dilemma.left--; if (w.dilemma.left <= 0) { const opt = w.dilemma.options[w.dilemma.options.length - 1]; for (const k in (opt.rel || {})) addRel(s, k, Math.min(0, opt.rel[k])); worldNote(s, '🕰️ Você demorou a decidir e perdeu a chance.'); w.dilemma = null; } }
-    else if (s.month > 8 && mulberry(s) < 0.04) { w.dilemma = dilemmaMaker(s); worldNote(s, '🗳️ Surgiu uma decisão política para você.'); }
+    else if (s.month > 8 && worldRand(s) < 0.04) { w.dilemma = dilemmaMaker(s); worldNote(s, '🗳️ Surgiu uma decisão política para você.'); }
 
     // Acontecimentos pelo mundo (afetam um pouco)
     if (mulberry(s) < 0.10) {
@@ -788,12 +794,12 @@
       if (k === 'tecnologia') p *= 0.4 + 0.6 * a.cov.edu;
       industry += (b.needsWorkers ? p * workerFactor * econ * power * trade : p) * FLOW;
     }
-    const boom = 1 + 0.015 * pw(s, 'economista');
+    const boom = 1 + 0.025 * pw(s, 'economista');
     let exports = 0;
-    NEIGHBORS.forEach(n => { if (s.world.treaty[n.key]) exports += s.world.econ[n.key] * (15 + 0.15 * s.pop) * (1 + 0.02 * pw(s, 'diplomata')); });
+    NEIGHBORS.forEach(n => { if (s.world.treaty[n.key]) exports += s.world.econ[n.key] * (25 + 0.35 * s.pop) * (1 + 0.02 * pw(s, 'diplomata')); });
     const income = (taxes + rent + commerce + industry + exports) * boom;
     let kindUp = {'Serviço': 0, 'Público': 0, 'Ambiente': 0};
-    for (const k in a.c) { const b = BUILDINGS[k]; if (b && kindUp[b.kind] != null) kindUp[b.kind] += b.upkeep * a.c[k]; }
+    for (const k in a.c) { const b = BUILDINGS[k]; if (b && kindUp[b.kind] != null) kindUp[b.kind] += upkeepTotal(k, a.c[k]); }
     const kindCut = kindUp['Serviço'] * Math.min(0.5, 0.06 * pw(s, 'infra')) + kindUp['Público'] * Math.min(0.5, 0.05 * pw(s, 'social'))
       + kindUp['Ambiente'] * Math.min(0.5, 0.06 * pw(s, 'ambiental'));
     const maint = Math.max(0, (a.upkeep - kindCut) * upk * (1 - upkeepCut(s))) * FLOW * COST_HARD * pressure(s);
@@ -833,7 +839,7 @@
       if (d.div && x.units > 0) dividends += x.units * x.price * d.div;
     });
     // O Gerente Financeiro faz o caixa parado render
-    const cashYield = Math.max(0, s.cash - reserve(s, a)) * 0.0005 * pw(s, 'gerente');
+    const cashYield = Math.max(0, s.cash - reserve(s, a)) * 0.0012 * pw(s, 'gerente');
     dividends += cashYield;
     s.cash += dividends;
     if (s.mods.econLeft > 0) s.mods.econLeft--;
@@ -886,15 +892,10 @@
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
-  const blunder = (s, k) => { cur = k; return staffRand(s) < errorChance(s, k); };
-  // Dinheiro gasto para corrigir um erro. Com supervisor, ele recupera uma parte (e o Auditor também);
-  // sem supervisor, ninguém corrige e o erro custa o dobro.
-  let cur = null;
+  const blunder = (s, k) => staffRand(s) < errorChance(s, k);
+  // Dinheiro gasto para corrigir um erro (o Auditor recupera uma parte)
   function lose(s, amount) {
-    const sup = cur ? supervision(s, cur) : {state: 'ok', mentor: null};
-    const mult = sup.state === 'missing' ? 3 : sup.state === 'weak' ? 1.4 : 1;
-    const refund = Math.min(0.6, auditRefund(s) + (sup.state === 'ok' && sup.mentor ? 0.25 : 0));
-    const net = Math.round(amount * mult * (1 - refund));
+    const net = Math.round(amount * (1 - auditRefund(s)));
     s.cash -= net; s.staffStats.errors++; s.staffStats.cost += net;
     return net;
   }
@@ -910,6 +911,12 @@
     return got;
   }
   const assetName = k => ASSETS.find(d => d.key === k).name;
+  // Dinheiro vendido pelo Gestor de Risco vai para a renda fixa que paga mais (não fica parado)
+  function parkSafe(s, amt) {
+    if (amt < 200) return;
+    const alvo = ['cdb', 'cdb_b', 'tesouro'].sort((p, q) => assetYield(s, q).total - assetYield(s, p).total)[0];
+    buy(s, alvo, Math.min(amt, s.cash));
+  }
   function portfolio(s) {
     const v = {}; let tot = 0;
     ASSETS.forEach(d => { const x = s.assets[d.key]; v[d.key] = x.units * x.price; tot += v[d.key]; });
@@ -1104,9 +1111,10 @@
       }
       // tratados comerciais com os melhores parceiros
       if (L >= 3 && treatyCount(s) < Math.floor((L + 1) / 2)) {
-        const best = NEIGHBORS.filter(n => !s.world.treaty[n.key] && s.world.rel[n.key] >= 65 && s.cash - TREATY_COST > reserve(s, a0) + 1500)
+        const best = NEIGHBORS.filter(n => !s.world.treaty[n.key] && s.world.rel[n.key] >= 60)
           .sort((p, q) => s.world.econ[q.key] * s.world.rel[q.key] - s.world.econ[p.key] * s.world.rel[p.key])[0];
-        if (best && signTreaty(s, best.key).ok) {
+        if (best && s.cash < TREATY_COST + reserve(s, a0) + 1500) liquidateSafe(s, TREATY_COST + reserve(s, a0) + 1500 - s.cash);
+        if (best && s.cash - TREATY_COST > reserve(s, a0) + 1500 && signTreaty(s, best.key).ok) {
           note(s, `🤝 Diplomata assinou um tratado comercial com ${best.name}.`);
           if (blunder(s, 'diplomata')) note(s, `😅 Diplomata negociou mal e gastou ${money(lose(s, TREATY_COST * 0.3))} a mais no tratado.`);
         }
@@ -1118,13 +1126,13 @@
       const L = lv(s, 'risco');
       RISKY_ASSETS.forEach(k => {
         const x = s.assets[k], v = x.units * x.price;
-        if (x.units > 0 && x.spent > 0 && v < x.spent * (1 - stopLoss(s))) { sell(s, k, 'all'); note(s, `🛡️ Gestor de Risco vendeu ${assetName(k)} para limitar o prejuízo.`); }
+        if (x.units > 0 && x.spent > 0 && v < x.spent * (1 - stopLoss(s))) { sell(s, k, 'all'); parkSafe(s, v * 0.97); note(s, `🛡️ Gestor de Risco vendeu ${assetName(k)} para limitar o prejuízo e guardou na renda fixa.`); }
       });
       const {v, tot} = portfolio(s);
       // não deixa uma posição passar de 35% da carteira
       if (L >= 3 && tot > 3000) {
         const big = RISKY_ASSETS.find(k => v[k] > 0.35 * tot);
-        if (big) { sell(s, big, v[big] - 0.30 * tot); note(s, `🛡️ Gestor de Risco reduziu ${assetName(big)} porque passou de 35% da carteira.`); }
+        if (big) { sell(s, big, v[big] - 0.30 * tot); parkSafe(s, (v[big] - 0.30 * tot) * 0.97); note(s, `🛡️ Gestor de Risco reduziu ${assetName(big)} porque passou de 35% da carteira.`); }
       }
       // compra ouro quando vem crise
       const crise = s.mods.econLeft > 0 && s.mods.econ < 1;
@@ -1136,13 +1144,12 @@
       const media = NEIGHBORS.reduce((t, n) => t + s.world.econ[n.key], 0) / NEIGHBORS.length;
       if (L >= 7 && media < 0.9) {
         const k = ['startup', 'cripto', 'acoes'].find(x => v[x] > 800);
-        if (k) { sell(s, k, v[k] * 0.25); note(s, `🛡️ Gestor de Risco vendeu 25% de ${assetName(k)} porque o mundo entrou em recessão.`); }
+        if (k) { sell(s, k, v[k] * 0.25); parkSafe(s, v[k] * 0.25 * 0.97); note(s, `🛡️ Gestor de Risco vendeu 25% de ${assetName(k)} porque o mundo entrou em recessão.`); }
       }
       // susto à toa
-      cur = 'risco';
       if (staffRand(s) < errorChance(s, 'risco') * 0.25) {
         const k = RISKY_ASSETS.slice().sort((p, q) => v[q] - v[p])[0];
-        if (v[k] >= 500) { sell(s, k, 'all'); note(s, `😅 Gestor de Risco se assustou à toa e vendeu ${assetName(k)}; perdeu ${money(lose(s, v[k] * 0.02 + 100))} em taxas.`); }
+        if (v[k] >= 500) note(s, `😅 Gestor de Risco fez uma operação errada em ${assetName(k)} e pagou ${money(lose(s, v[k] * 0.02 + 100))} em taxas.`);
       }
     }
     if (active(s, 'corretor')) {
@@ -1200,7 +1207,7 @@
   }
 
   return {COLS, ROWS: START_ROWS, HALL, BUILDINGS, ASSETS, SAFE_ASSETS, RISKY_ASSETS, FIXED_ASSETS, BASE_RATE, assetYield, GOALS, STAFF, STAFF_ORDER, SALARY_ORDER, AREAS, MAX_LEVEL, NEIGHBORS,
-    hired, active, levelOf, isUnlocked, lockReason, supervision, orderWarning, readiness, hireWarnings, nextInOrder, HIRE_ORDER, DIFFICULTY, COST_HARD, EVENT_HARD, pressure, priceF, sizeF, phaseOf, PHASES, staffCost, salaryOf, efficiency, errorChance, staffInfo, upgrade, upgradeCost, teamBonus,
+    hired, active, levelOf, isUnlocked, lockReason, readiness, hireWarnings, DIFFICULTY, COST_HARD, EVENT_HARD, PUBLIC_ESC, isPublic, upkeepInfo, publicCosts, pressure, priceF, sizeF, phaseOf, PHASES, staffCost, salaryOf, efficiency, errorChance, staffInfo, upgrade, upgradeCost, teamBonus,
     loanRate, loanLimit, hire, fire, setAuto, recommend, recCity, recInfra, recGreen, recSocial, needs, advice, hint,
     picks: {city: pickCity, infra: pickInfra, green: pickGreen, social: pickSocial, asset: pickAsset, group: bestGroup}, TARGETS, freeTiles, buildCost, SKILLS, LOT_SIZE, GIFT_COST, TREATY_COST, TREATY_UPKEEP, FLOW, WORLD_ASSETS, LOAN_LIMIT, OVERDRAFT_LIMIT,
     worldInfo, worldFactor, gift, signTreaty, cancelTreaty, borrowForeign, repayForeign, answerRequest, answerDilemma, foreignDebt, lentValue, foreignRate, foreignLimit,

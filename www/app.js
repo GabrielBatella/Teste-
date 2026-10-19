@@ -85,10 +85,11 @@
   ];
 
   function buildCard(k, c) {
-    const b = Sim.BUILDINGS[k], n = c[k] || 0, price = Sim.buildCost(s, k);
+    const b = Sim.BUILDINGS[k], n = c[k] || 0, price = Sim.buildCost(s, k), u = Sim.upkeepInfo(s, k);
+    const upl = u.public ? `<div class="mut" style="font-size:13px;margin-top:6px">🏛️ Serviço público: custa ${M(Math.round(u.now))}/mês ao governo${n ? ` · a próxima unidade soma +${M(Math.round(u.next))}/mês` : ` · a 1ª custa ${M(Math.round(u.next))}/mês`}</div>` : '';
     return `<div class="card asset"><div class="top"><span class="ico">${b.icon}</span>
       <div class="nm">${b.name}<small>${TAGS[k]}</small></div>
-      <div class="val">${n}<small>você tem</small></div></div>
+      <div class="val">${n}<small>você tem</small></div></div>${upl}
       <div class="btns"><button class="btn" data-build="${k}" ${s.cash < price ? 'disabled' : ''}>Construir ${M(price)}${price < b.cost ? `<small>desconto do Arquiteto (era ${M(b.cost)})</small>` : ''}</button>
       <button class="btn sec" data-demo="${k}" ${n ? '' : 'disabled'}>Demolir</button></div>
       </div>`;
@@ -179,6 +180,9 @@
       ${s.report && s.report.exports > 0 ? `<div class="row"><span>📜 Exportações (tratados)</span><b class="pos">${sign(s.report.exports)}</b></div>` : ''}
       ${s.report && s.report.dividends > 0 ? `<div class="row"><span>💵 Dividendos no último mês</span><b class="pos">${sign(s.report.dividends)}</b></div>` : ''}
       <div class="row"><span>Ganho por mês</span><b class="${cls(net)}">${sign(net)}</b></div></div>
+    ${(() => { const pc = Sim.publicCosts(s); return pc.rows.length ? `<div class="card"><h3>🏛️ Gastos públicos</h3><div class="big neg">-${M(Math.round(pc.total))}</div><div class="mut" style="text-align:center">por mês com serviços do governo</div>
+      ${pc.rows.map(r => `<div class="row"><span>${Sim.BUILDINGS[r.key].icon} ${Sim.BUILDINGS[r.key].name} ×${r.n}</span><b class="neg">-${M(Math.round(r.total))}</b></div>`).join('')}
+      <div class="mut" style="font-size:13px;margin-top:6px">Quanto mais unidades do mesmo serviço, mais caro cada uma fica${pc.extra > 1 ? ` (já pagando ${M(Math.round(pc.extra))}/mês a mais por isso)` : ''}.</div></div>` : ''; })()}
     <div class="card"><h3>🏛️ Imposto da cidade</h3>
       <div class="stepper"><button data-tax="-1">−</button><b>${s.taxRate}%</b><button data-tax="1">+</button></div>
       <div class="mut" style="text-align:center">${a.taxEffect < -0.5 ? '😠 Imposto alto: o povo reclama' : a.taxEffect > 0.5 ? '😊 Imposto baixo: o povo gosta' : 'Imposto normal'}</div></div>
@@ -198,8 +202,8 @@
   }
 
   function staffCard(k) {
-    const f = Sim.STAFF[k], on = Sim.hired(s, k), nth = Sim.HIRE_ORDER.indexOf(k) + 1;
-    const mentor = f.mentor ? Sim.STAFF[f.mentor] : null, warns = !on ? Sim.hireWarnings(s, k) : [], warn = warns.length > 0;
+    const f = Sim.STAFF[k], on = Sim.hired(s, k);
+    const warns = !on ? Sim.hireWarnings(s, k) : [], warn = warns.length > 0;
     const worth = f.pop ? `a partir de ~${f.pop} habitantes` : `a partir de ~${M(f.nw)} de patrimônio`;
     let body = '', sub = `${M(Math.round(f.salary * Sim.FLOW))} por mês no início`;
     if (on) {
@@ -208,9 +212,7 @@
       const train = inf.nextCost == null
         ? '<button class="btn sec" disabled>⭐ Nível máximo</button>'
         : `<button class="btn" data-upgrade="${k}" ${s.cash < inf.nextCost ? 'disabled' : ''}>🎓 Treinar para o nível ${inf.level + 1}<small>${M(inf.nextCost)} agora · salário vira ${M(inf.nextSalary)}/mês</small></button>`;
-      const sp = inf.supervision;
-      body = `<div class="supline ${sp.state === 'ok' ? 'ok' : 'bad'}">${sp.mentor ? (sp.state === 'ok' ? `👤 Supervisor: ${sp.mentorName} ✅` : `⚠️ ${sp.note}`) : '👑 Chefe da equipe: não precisa de supervisor'}</div>
-        <div class="eff"><div class="effhead"><span>${ef[0]} ${ef[1]}</span></div>
+      body = `<div class="eff"><div class="effhead"><span>${ef[0]} ${ef[1]}</span></div>
           <i><b style="width:${Math.round(inf.efficiency * 100)}%;background:${ef[2]}"></b></i>
           <div class="mut" style="font-size:12px">Aguenta uma cidade de até ${inf.capacity.toLocaleString('pt-BR')} habitantes (a sua tem ${Math.floor(s.pop).toLocaleString('pt-BR')}).</div></div>
         <div class="skills">${inf.skills.map(k2 => `<div class="${k2.on ? 'on' : 'off'}">${k2.on ? '✅' : '🔒 Nível ' + k2.lvl + ':'} ${k2.text}</div>`).join('')}</div>
@@ -221,13 +223,13 @@
     } else {
       const skills = (Sim.SKILLS[k] || []).map(([lvl, text]) => `<div class="off">Nível ${lvl}: ${text}</div>`).join('');
       body = `<div class="skills">${skills || '<div class="off">Efeito automático: não toma decisões, só melhora a cidade.</div>'}</div>
-        <div class="perks"><span>📏 Compensa ${worth}</span>${mentor ? `<span>👤 Supervisor: ${mentor.name}</span>` : '<span>👑 Chefe da equipe</span>'}</div>
+        <div class="perks"><span>📏 Compensa ${worth}</span></div>
         ${warns.map(w => `<div class="supline bad">⚠️ ${w}</div>`).join('')}
         <div class="btns"><button class="btn ${warn ? 'red' : ''}" data-hire="${k}" ${s.cash < Math.round(f.salary * Sim.FLOW) ? 'disabled' : ''}>${warn ? 'Contratar mesmo assim' : 'Contratar'} · ${M(Math.round(f.salary * Sim.FLOW))}/mês</button></div>`;
     }
     return `<div class="card asset"><div class="top"><span class="ico">${f.icon}</span>
       <div class="nm">${f.name}<small>${sub}</small></div>
-      <div class="val">${on ? '✅' : ''}<small>nº ${nth}</small></div></div>
+      <div class="val">${on ? '✅' : ''}</div></div>
       <div class="mut" style="margin-top:8px;font-size:14px">${f.desc}</div>${body}</div>`;
   }
 
@@ -241,16 +243,7 @@
     const names = Sim.STAFF_ORDER.map(k => Sim.STAFF[k].name);
     const mine = s.log.filter(l => (l.includes('😅') || names.some(n => l.includes(n))) && !/Agora você pode/.test(l)).slice(0, 8);
     const logHtml = mine.length ? mine.map(l => `<div class="logline">${l}</div>`).join('') : '<div class="mut">Ainda não fizeram nada.</div>';
-    const nextK = Sim.nextInOrder(s);
-    const orderRow = Sim.HIRE_ORDER.map((k, i) => {
-      const st = Sim.hired(s, k) ? 'done' : k === nextK ? 'next' : 'wait';
-      return `<span class="step ${st}">${st === 'done' ? '✅' : st === 'next' ? '👉' : '⬜'} ${i + 1}º ${Sim.STAFF[k].icon}</span>`;
-    }).join('');
-    const orderCard = `<div class="card staffnote"><h3>📋 Ordem certa para contratar</h3>
-      <div class="steps">${orderRow}</div>
-      <div class="mut" style="margin-top:8px;font-size:14px">${nextK ? `Próximo da ordem: <b>${Sim.STAFF[nextK].icon} ${Sim.STAFF[nextK].name}</b>.` : 'Equipe completa!'}
-        <b>Todos estão liberados: a escolha é sua.</b> Leia o que cada um faz antes de contratar. Cada pessoa precisa do <b>supervisor</b> dela contratado antes e com nível pelo menos metade do dela, e só compensa a partir de certo tamanho. Contratar errado faz ela errar muito, render só metade e ninguém corrige os erros: pode até quebrar a prefeitura.</div></div>`;
-    return `${orderCard}<div class="card"><h3>👔 Folha de pagamento (${count} de 15)</h3><div class="big ${cost ? 'neg' : ''}">${cost ? '-' : ''}${M(cost)}</div>
+    return `<div class="card staffnote"><h3>📋 Quem contratar?</h3><div class="mut" style="font-size:14px">Ninguém manda em ninguém: todos são iguais. A diferença é o retorno de cada cargo. Um investidor ou analista rende bem mais que quem cuida do meio ambiente; um profissional de relações internacionais rende mais que o da energia. <b>Pesquise o que cada um faz</b> e contrate com critério: contratar errado só gera custo e erros.</div></div><div class="card"><h3>👔 Folha de pagamento (${count} de 15)</h3><div class="big ${cost ? 'neg' : ''}">${cost ? '-' : ''}${M(cost)}</div>
       <div class="mut" style="text-align:center">por mês</div></div>
       <div class="mut" style="font-size:14px;margin-bottom:12px">Cada pessoa é boa em uma coisa. Todas estão liberadas, mas cada uma só ajuda no momento e na ordem certos. Quanto mais gente da mesma área, maior o bônus de time completo, e quanto maior a equipe, mais cara a folha. Quanto maior a cidade, mais trabalho: treine quem ficar sobrecarregado.</div>
       ${areas}
