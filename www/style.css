@@ -107,3 +107,7 @@ nav button{font-size:22px}
 nav button span{font-size:11px}
 nav button.alert::after{content:'';position:absolute;width:10px;height:10px;border-radius:50%;background:var(--bad);margin:-2px 0 0 22px}
 nav button{position:relative}
+
+.skills{margin-top:10px;font-size:13px}
+.skills .on{color:var(--tx);padding:2px 0}
+.skills .off{color:var(--mut);padding:2px 0}

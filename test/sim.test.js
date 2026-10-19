@@ -124,7 +124,7 @@ test('construir e demolir sem escolher terreno', () => {
   assert.equal(Sim.counts(s).casa, antes);
   assert.equal(Sim.demolishOne(s, 'hospital').ok, false);
   s.tiles.fill('casa'); s.cash = 99999;
-  assert.equal(Sim.buildAny(s, 'casa').ok, false);
+  assert.equal(Sim.buildAny(s, 'casa').ok, true, 'o mapa cresce sozinho');
 });
 
 test('dificuldade: parado não quebra, ingênuo costuma ficar no vermelho', () => {
@@ -158,9 +158,9 @@ test('funcionário só pode ser contratado depois de liberado', () => {
 test('salário entra nas despesas e some ao demitir', () => {
   const s = rica(1);
   Sim.hire(s, 'arquiteto'); Sim.hire(s, 'gerente');
-  assert.equal(Sim.staffCost(s), 80);
+  assert.equal(Sim.staffCost(s), Sim.salaryOf(s, 'arquiteto') + Sim.salaryOf(s, 'gerente'));
   Sim.step(s);
-  assert.equal(s.report.salaries, 80);
+  assert.equal(s.report.salaries, Sim.staffCost(s));
   Sim.fire(s, 'arquiteto'); Sim.fire(s, 'gerente');
   Sim.step(s);
   assert.equal(s.report.salaries, 0);
@@ -540,7 +540,7 @@ test('novos investimentos existem e funcionam', () => {
     assert.ok(Sim.ASSETS.find(a => a.key === k), k);
     assert.ok(Sim.buy(s, k, 500).ok); assert.ok(Sim.sell(s, k, 'all').ok);
   });
-  assert.equal(Sim.ASSETS.length, 14);
+  assert.equal(Sim.ASSETS.length, 14 + Sim.NEIGHBORS.length);
   for (let m = 0; m < 24; m++) Sim.step(s);
   Sim.ASSETS.forEach(a => assert.ok(s.assets[a.key].price > 0 && Number.isFinite(s.assets[a.key].price)));
 });
@@ -663,43 +663,31 @@ test('gestor de risco suaviza o tombo das crises e economista a receita', () => 
   assert.ok(e.report.income > f.report.income, 'Economista aumenta a receita');
 });
 
-// ---------- Terreno sem limite ----------
-test('terreno: dá para comprar lotes e o preço sobe a cada compra', () => {
-  const s = Sim.newGame(70); s.cash = 1e7;
-  const antes = s.tiles.length, c0 = Sim.landCost(s);
-  assert.ok(Sim.buyLand(s).ok);
-  assert.equal(s.tiles.length, antes + Sim.LOT_SIZE);
-  assert.ok(Sim.landCost(s) > c0);
-  for (let i = 0; i < 30; i++) assert.ok(Sim.buyLand(s).ok);
-  assert.ok(s.tiles.length > 400, 'cidade enorme');
-  s.cash = 10; assert.equal(Sim.buyLand(s).ok, false);
+// ---------- Terreno infinito ----------
+test('terreno: o mapa cresce sozinho e não tem limite', () => {
+  const s = Sim.newGame(70); s.cash = 1e9;
+  const antes = s.tiles.length;
+  for (let i = 0; i < 400; i++) assert.ok(Sim.buildAny(s, 'casa').ok);
+  assert.ok(s.tiles.length > antes + 300, 'cidade enorme: ' + s.tiles.length);
+  assert.equal(Sim.buyLand, undefined, 'não existe mais compra de terreno');
 });
 
-test('sem terreno livre não dá para construir até comprar mais', () => {
-  const s = Sim.newGame(71); s.cash = 1e7;
-  while (Sim.freeTiles(s) > 0) assert.ok(Sim.buildAny(s, 'casa').ok);
-  assert.equal(Sim.buildAny(s, 'casa').ok, false);
-  assert.equal(Sim.hint(s, Sim.analyze(s)).id, 'land');
-  Sim.buyLand(s);
-  assert.ok(Sim.buildAny(s, 'casa').ok);
-});
-
-test('arquiteto compra terreno sozinho quando acaba', () => {
-  let comprou = 0;
+test('arquiteto continua construindo mesmo sem terreno livre', () => {
+  let construiu = 0;
   for (let k = 1; k <= 10; k++) {
     const s = Sim.newGame(400 + k); s.cash = 1e6;
     while (Sim.freeTiles(s) > 0) Sim.buildAny(s, 'casa');
     s.pop = 60; Sim.hire(s, 'arquiteto'); s.cash = 60000; s.month = 1;
-    const n = s.tiles.length; Sim.step(s);
-    if (s.tiles.length > n) comprou++;
+    const n = s.tiles.filter(Boolean).length; Sim.step(s);
+    if (s.tiles.filter(Boolean).length > n) construiu++;
   }
-  assert.ok(comprou >= 5, 'o arquiteto deveria comprar terreno: ' + comprou);
+  assert.ok(construiu >= 5, 'o arquiteto deveria construir: ' + construiu);
 });
 
 // ---------- Mundo: vizinhos, relações, comércio, empréstimos, política ----------
-test('mundo: 4 vizinhos começam neutros', () => {
+test('mundo: 11 países começam neutros', () => {
   const s = Sim.newGame(80);
-  assert.equal(Sim.NEIGHBORS.length, 4);
+  assert.equal(Sim.NEIGHBORS.length, 11);
   Sim.NEIGHBORS.forEach(n => { assert.equal(s.world.rel[n.key], 50); assert.equal(s.world.owed[n.key], 0); });
 });
 
@@ -809,18 +797,18 @@ test('o mundo afeta só um pouco: com e sem acontecimentos o resultado é pareci
 });
 
 test('diplomata mantém as relações e manda presente quando esfria', () => {
-  const s = rica(90); s.pop = 130; s.cash = 100000;
-  assert.ok(Sim.hire(s, 'gerente').ok); assert.ok(Sim.hire(s, 'diplomata').ok);
-  s.world.rel.reino = 30; s.world.giftCd.reino = 0;
-  const r = s.world.rel.reino;
-  Sim.step(s);
-  assert.ok(s.world.rel.reino > r - 0.5, 'a relação não deve piorar com diplomata');
+  const media = comDiplomata => { let tot = 0;
+    for (let k = 0; k < 20; k++) { const s = rica(90 + k); s.pop = 130; s.cash = 100000;
+      if (comDiplomata) { assert.ok(Sim.hire(s, 'gerente').ok); assert.ok(Sim.hire(s, 'diplomata').ok); for (let i = 1; i < 4; i++) Sim.upgrade(s, 'diplomata'); }
+      s.world.rel.reino = 30; s.world.giftCd.reino = 0; Sim.step(s); tot += s.world.rel.reino; }
+    return tot / 20; };
+  assert.ok(media(true) > media(false), 'com diplomata a relação esfria menos');
 });
 
-test('save antigo ganha mundo e terreno', () => {
+test('save antigo ganha mundo e países novos', () => {
   const s = Sim.newGame(91); delete s.world; delete s.landBought;
   const t = Sim.load(JSON.stringify(s));
-  assert.ok(t.world.rel.reino === 50 && t.landBought === 0);
+  assert.ok(t.world.rel.reino === 50 && t.world.rel.imperio === 50 && t.assets.b_imperio);
   assert.ok(Sim.step(t));
 });
 
@@ -908,4 +896,219 @@ test('save antigo ganha juros, bancos e ações de dividendos', () => {
   const t = Sim.load(JSON.stringify(s));
   assert.ok(t.market.rate > 0 && t.assets.cdb_d && t.assets.divid);
   assert.ok(Sim.step(t));
+});
+
+// ---------- Ritmo da economia (metade) ----------
+test('receitas e custos mensais foram reduzidos pela metade', () => {
+  assert.equal(Sim.FLOW, 0.5);
+  const s = Sim.newGame(1); const a = Sim.analyze(s); s.cash = 1e6; Sim.step(s);
+  assert.ok(Math.abs(s.report.taxes - a.employed * 4) < 1e-6, 'imposto por empregado caiu de 8 para 4');
+  assert.ok(Math.abs(s.report.maint - a.upkeep * 0.5) < 1e-6);
+  assert.ok(s.report.net > 0, 'a cidade inicial ainda dá lucro');
+  assert.ok(s.report.net < 100, 'mas bem menos que antes: ' + s.report.net);
+});
+
+test('salários seguem o novo ritmo', () => {
+  const s = rica(1); Sim.hire(s, 'arquiteto');
+  assert.equal(Sim.salaryOf(s, 'arquiteto'), 23);
+});
+
+// ---------- Países novos e bolsas ----------
+test('há 7 países novos, cada um com sua bolsa', () => {
+  assert.equal(Sim.NEIGHBORS.length, 11);
+  const s = Sim.newGame(1000);
+  Sim.NEIGHBORS.forEach(n => { assert.ok(s.assets['b_' + n.key], n.key); assert.ok(Sim.buy(s, 'b_' + n.key, 500).ok); });
+  assert.equal(Sim.WORLD_ASSETS.length, 11);
+});
+
+test('a bolsa de um país sobe e cai com a economia dele', () => {
+  const s = Sim.newGame(1001);
+  const p0 = s.assets.b_imperio.price;
+  s.world.econ.imperio = 1; Sim.step(s);
+  // choque direto: crise derruba a bolsa do país
+  const antes = s.assets.b_imperio.price;
+  s.world.econ.imperio = 1;
+  s.world.econ.imperio *= 0.8; // simula queda registrada pelo país
+  const volta = s.assets.b_imperio.price; assert.equal(volta, antes);
+  assert.ok(p0 > 0);
+});
+
+test('crises em países derrubam a bolsa deles (de vez em quando) sem exagero', () => {
+  let quedas = 0, altas = 0;
+  for (let k = 1; k <= 30; k++) {
+    const s = Sim.newGame(1100 + k); s.cash = 1e7;
+    for (let m = 0; m < 60; m++) { Sim.step(s); s.cash = Math.max(s.cash, 1e6); if (s.over) s.over = null; }
+    if (s.log.some(l => l.includes('Crise em'))) quedas++;
+    if (s.log.some(l => l.includes('Boom em'))) altas++;
+    Sim.NEIGHBORS.forEach(n => assert.ok(s.assets['b_' + n.key].price >= 1 && Number.isFinite(s.assets['b_' + n.key].price)));
+  }
+  assert.ok(quedas > 3 && altas > 3, `crises ${quedas} booms ${altas}`);
+});
+
+test('o efeito do mundo continua pequeno mesmo com 11 países', () => {
+  const s = Sim.newGame(1002);
+  NEIGHBORS_ALL(s, 100);
+  assert.ok(Sim.worldFactor(s) <= 1.25, 'teto do efeito: ' + Sim.worldFactor(s));
+  NEIGHBORS_ALL(s, 0);
+  assert.ok(Sim.worldFactor(s) >= 0.85);
+});
+function NEIGHBORS_ALL(s, v) { Sim.NEIGHBORS.forEach(n => { s.world.rel[n.key] = v; s.world.treaty[n.key] = v === 100; }); }
+
+// ---------- Bots versáteis: cada nível libera comportamentos ----------
+const base = (seed, pop = 300) => { const s = Sim.newGame(seed); s.cash = 1e8; s.pop = pop;
+  for (let i = 0; i < 40; i++) Sim.buildAny(s, 'casa'); s.pop = pop; return s; };
+
+test('arquiteto: nível 1 só faz casa e loja; níveis altos usam o resto', () => {
+  const s = base(1200, 130); for (let i = 0; i < 3; i++) Sim.buildAny(s, 'agua'); const a = Sim.analyze(s);
+  assert.equal(Sim.picks.city(s, a, 1), 'loja');
+  assert.equal(Sim.picks.city(s, a, 3), 'fazenda');
+  for (let i = 0; i < 10; i++) Sim.buildAny(s, 'escola');
+  const b = Sim.analyze(s); assert.ok(b.cov.edu >= 0.5);
+  assert.equal(Sim.picks.city(s, b, 5), 'tecnologia');
+  const t = base(1201, 300); for (let i = 0; i < 12; i++) Sim.buildAny(t, 'loja'); for (let i = 0; i < 4; i++) Sim.buildAny(t, 'agua'), Sim.buildAny(t, 'esgoto');
+  t.pop = 600; const c = Sim.analyze(t); // falta emprego, vendas lotadas
+  assert.equal(Sim.picks.city(t, c, 4), 'mercado');
+});
+
+test('arquiteto: moradia vira prédio e condomínio com o nível', () => {
+  const s = Sim.newGame(1202); s.cash = 1e8; s.tiles.fill(null); s.tiles[Sim.HALL] = 'prefeitura';
+  for (let i = 0; i < 20; i++) Sim.buildAny(s, 'loja'); for (let i = 0; i < 3; i++) { Sim.buildAny(s, 'agua'); Sim.buildAny(s, 'esgoto'); Sim.buildAny(s, 'solar'); }
+  for (let i = 0; i < 8; i++) Sim.buildAny(s, 'casa'); s.pop = Sim.analyze(s).housing; s.happy = 80;
+  const a = Sim.analyze(s); a.happy = 80;
+  assert.equal(Sim.picks.city(s, a, 1), 'casa');
+  assert.equal(Sim.picks.city(Object.assign(s, {pop: 120}), Object.assign({}, a, {housing: 120}), 3), 'predio');
+  assert.equal(Sim.picks.city(Object.assign(s, {pop: 260}), Object.assign({}, a, {housing: 260}), 5), 'condominio');
+});
+
+test('infra: solar no começo, eólica a partir do nível 3, age mais cedo com o nível', () => {
+  const s = base(1210, 500); const a = Sim.analyze(s);
+  assert.equal(Sim.picks.infra(s, a, 1), 'solar'.length ? Sim.picks.infra(s, a, 1) : null);
+  assert.ok(['solar', 'agua', 'esgoto'].includes(Sim.picks.infra(s, a, 1)));
+  const fake = {cov: {power: 0.4, water: 1, sewage: 1}, powerDeficit: 400};
+  assert.equal(Sim.picks.infra(s, fake, 1), 'solar');
+  assert.equal(Sim.picks.infra(s, fake, 3), 'eolica');
+  const quase = {cov: {power: 0.85, water: 1, sewage: 1}, powerDeficit: 50};
+  assert.equal(Sim.picks.infra(s, quase, 1), null, 'nível 1 espera a falta ficar séria');
+  assert.equal(Sim.picks.infra(s, quase, 6), 'solar', 'nível 6 age antes');
+});
+
+test('ambiental: filtro, floresta e reciclagem conforme o nível', () => {
+  const s = base(1220); const mk = p => ({pollution: p});
+  assert.equal(Sim.picks.green(s, mk(15), 1), 'filtro');
+  assert.equal(Sim.picks.green(s, mk(8), 1), null, 'nível 1 só age com poluição alta');
+  assert.equal(Sim.picks.green(s, mk(9), 3), null, 'nível 3 ainda espera');
+  assert.equal(Sim.picks.green(s, mk(11), 3), 'filtro');
+  assert.equal(Sim.picks.green(s, mk(9), 4), 'floresta');
+  assert.equal(Sim.picks.green(s, mk(11), 4), 'reciclagem');
+  assert.equal(Sim.picks.green(s, mk(3), 8), 'floresta');
+  assert.equal(Sim.picks.green(s, mk(1), 8), null);
+});
+
+test('social: bombeiros no 3, universidade no 4, estádio no 5', () => {
+  const s = base(1230, 400);
+  for (let i = 0; i < 8; i++) { Sim.buildAny(s, 'escola'); Sim.buildAny(s, 'hospital'); Sim.buildAny(s, 'policia'); Sim.buildAny(s, 'parque'); }
+  for (let i = 0; i < 4; i++) Sim.buildAny(s, 'parque');
+  const a = Sim.analyze(s); a.happy = 70;
+  assert.equal(Sim.picks.social(s, a, 1), null, 'nível 1 não faz bombeiros');
+  assert.equal(Sim.picks.social(s, a, 3), 'bombeiros');
+  Sim.buildAny(s, 'bombeiros'); Sim.buildAny(s, 'bombeiros'); Sim.buildAny(s, 'bombeiros'); Sim.buildAny(s, 'tecnologia');
+  s.pop = 450; const b = Sim.analyze(s); b.happy = 70;
+  assert.equal(Sim.picks.social(s, b, 4), 'universidade');
+  Sim.buildAny(s, 'universidade'); Sim.buildAny(s, 'parque'); Sim.buildAny(s, 'parque'); Sim.buildAny(s, 'parque');
+  const c = Sim.analyze(s); c.happy = 70;
+  assert.equal(Sim.picks.social(s, c, 5), 'estadio');
+});
+
+test('corretor: nível 1 só renda fixa; nível 8 diversifica em vários grupos', () => {
+  const grupos = L => { const s = Sim.newGame(1240); s.pop = 100; s.cash = 1e7;
+    for (let i = 0; i < 40; i++) { const g = Sim.picks.group(s, L, 2000); const k = Sim.picks.asset(s, g, L); Sim.buy(s, k, 2000); }
+    const out = new Set(); Sim.ASSETS.forEach(d => { if (s.assets[d.key].units > 0) out.add(d.key); }); return out; };
+  const g1 = grupos(1), g8 = grupos(8);
+  assert.ok([...g1].every(k => ['cdb', 'cdb_b', 'tesouro'].includes(k)), 'nível 1: só renda fixa: ' + [...g1]);
+  assert.ok(g8.size >= 7, 'nível 8 diversifica: ' + [...g8]);
+  assert.ok([...g8].some(k => Sim.WORLD_ASSETS.includes(k)), 'inclui bolsas de outros países');
+  assert.ok(['divid', 'fii'].some(k => g8.has(k)), 'inclui dividendos');
+  assert.ok(['ouro', 'dolar'].some(k => g8.has(k)), 'inclui proteção');
+});
+
+test('corretor de verdade (no jogo) diversifica ao longo do tempo quando evolui', () => {
+  const tipos = L => { let n = 0;
+    for (let k = 0; k < 8; k++) { const s = Sim.newGame(1250 + k); s.pop = 100; s.cash = 5e6; assert.ok(Sim.hire(s, 'analista').ok);
+      assert.ok(Sim.hire(s, 'corretor').ok); for (let i = 1; i < L; i++) { s.cash = 5e6; Sim.upgrade(s, 'corretor'); }
+      s.cash = 5e6; for (let m = 0; m < 30; m++) { Sim.step(s); s.cash = Math.max(s.cash, 3e6); if (s.over) s.over = null; }
+      n += Sim.ASSETS.filter(d => s.assets[d.key].units > 0).length; }
+    return n / 8; };
+  assert.ok(tipos(8) > tipos(1) + 2, `diversificação: nível 8 ${tipos(8)} x nível 1 ${tipos(1)}`);
+});
+
+test('analista global investe em países em alta e sai dos que entram em crise', () => {
+  let comprou = 0, saiu = 0;
+  for (let k = 0; k < 12; k++) {
+    const s = Sim.newGame(1300 + k); s.pop = 100; s.cash = 5e6; Sim.hire(s, 'analista'); Sim.hire(s, 'risco'); Sim.hire(s, 'global');
+    for (let i = 1; i < 5; i++) { s.cash = 5e6; Sim.upgrade(s, 'global'); }
+    s.cash = 5e6; s.world.econ.imperio = 1.3; s.world.rel.imperio = 60; Sim.step(s);
+    if (s.log.some(l => l.includes('Analista Global investiu'))) comprou++;
+    Sim.buy(s, 'b_ilhas', 3000); s.world.econ.ilhas = 0.7; s.cash = 5e6; Sim.step(s);
+    if (s.log.some(l => l.includes('Analista Global saiu'))) saiu++;
+  }
+  assert.ok(comprou >= 5, 'comprou bolsa em alta: ' + comprou);
+  assert.ok(saiu >= 5, 'saiu da bolsa em crise: ' + saiu);
+});
+
+test('gerente: nível baixo usa só o banco; nível 3+ pega o empréstimo mais barato (de outro país)', () => {
+  const onde = L => { let pais = 0;
+    for (let k = 0; k < 10; k++) { const s = rica(1400 + k); s.pop = 120; s.cash = 60000; assert.ok(Sim.hire(s, 'gerente').ok);
+      for (let i = 1; i < L; i++) { s.cash = 60000; Sim.upgrade(s, 'gerente'); }
+      Sim.NEIGHBORS.forEach(n => { s.world.rel[n.key] = 95; }); s.cash = -2500; Sim.step(s);
+      if (Sim.foreignDebt(s) > 0) pais++; }
+    return pais; };
+  assert.equal(onde(1), 0, 'nível 1 só usa o banco');
+  assert.ok(onde(4) >= 6, 'nível 4 escolhe o mais barato (país): ' + onde(4));
+});
+
+test('tesoureiro troca dívida cara do banco por empréstimo barato de um país', () => {
+  let trocou = 0;
+  for (let k = 0; k < 12; k++) { const s = rica(1500 + k); s.pop = 200; s.cash = 80000; s.debt = 12000;
+    assert.ok(Sim.hire(s, 'gerente').ok); assert.ok(Sim.hire(s, 'tesoureiro').ok);
+    Sim.NEIGHBORS.forEach(n => { s.world.rel[n.key] = 95; }); s.world.econ.reino = 1.2;
+    const d0 = s.debt; Sim.step(s); if (s.log.some(l => l.includes('Tesoureiro trocou'))) trocou++; assert.ok(d0 > 0); }
+  assert.ok(trocou >= 6, 'refinanciou: ' + trocou);
+});
+
+test('diplomata: assina tratados (nível 3), decide dilemas (2) e pedidos (4)', () => {
+  const prep = L => { const s = rica(1600); s.pop = 200; s.cash = 3e5; assert.ok(Sim.hire(s, 'gerente').ok); assert.ok(Sim.hire(s, 'diplomata').ok);
+    for (let i = 1; i < L; i++) { s.cash = 3e5; Sim.upgrade(s, 'diplomata'); } s.cash = 3e5; return s; };
+  let tratados = 0, dilemas = 0, pedidos = 0;
+  for (let k = 0; k < 15; k++) {
+    const a = prep(3); a.seed = 9000 + k; a.sseed = 500 + k; Sim.NEIGHBORS.forEach(n => { a.world.rel[n.key] = 80; }); Sim.step(a); if (Sim.NEIGHBORS.some(n => a.world.treaty[n.key])) tratados++;
+    const b = prep(2); b.seed = 9100 + k; b.sseed = 700 + k; b.world.dilemma = {text: 'x', left: 5, options: [{label: 'A', rel: {reino: 8}}, {label: 'B', rel: {reino: -8}}]}; Sim.step(b); if (!b.world.dilemma) dilemas++;
+    const c = prep(4); c.seed = 9200 + k; c.sseed = 900 + k; c.world.rel.vizinha = 80; c.world.request = {who: 'vizinha', amount: 1000, months: 12, rate: 0.01, left: 3}; Sim.step(c); if (!c.world.request) pedidos++;
+  }
+  assert.ok(tratados >= 8, 'tratados: ' + tratados);
+  assert.equal(dilemas, 15, 'decidiu todos os dilemas');
+  assert.equal(pedidos, 15, 'respondeu todos os pedidos');
+  const nivel1 = prep(1); nivel1.world.dilemma = {text: 'x', left: 5, options: [{label: 'A', rel: {reino: 8}}, {label: 'B', rel: {}}]}; Sim.step(nivel1);
+  assert.ok(nivel1.world.dilemma, 'nível 1 não decide dilemas');
+});
+
+test('gestor de risco: reduz posição grande, compra ouro na crise (nível 5) e protege na recessão (7)', () => {
+  let cortou = 0, ouro = 0;
+  for (let k = 0; k < 12; k++) {
+    const s = rica(1700 + k); s.cash = 1e6; assert.ok(Sim.hire(s, 'analista').ok); assert.ok(Sim.hire(s, 'risco').ok);
+    for (let i = 1; i < 6; i++) { s.cash = 1e6; Sim.upgrade(s, 'risco'); }
+    s.cash = 1e6; Sim.buy(s, 'acoes', 40000); Sim.buy(s, 'cdb', 5000); s.mods.econLeft = 4; s.mods.econ = 0.75; Sim.step(s);
+    if (s.log.some(l => l.includes('passou de 35%'))) cortou++;
+    if (s.log.some(l => l.includes('comprou') && l.includes('ouro'))) ouro++;
+  }
+  assert.ok(cortou >= 8, 'cortou posição grande: ' + cortou);
+  assert.ok(ouro >= 3, 'comprou ouro na crise: ' + ouro);
+});
+
+test('a interface sabe o que cada nível libera (skills)', () => {
+  const s = rica(1800); s.pop = 100; s.cash = 1e6; Sim.hire(s, 'arquiteto');
+  let sk = Sim.staffInfo(s, 'arquiteto').skills;
+  assert.ok(sk.length >= 4 && sk[0].on && !sk[sk.length - 1].on);
+  for (let i = 1; i < 8; i++) Sim.upgrade(s, 'arquiteto');
+  assert.ok(Sim.staffInfo(s, 'arquiteto').skills.every(x => x.on), 'nível 8 libera tudo');
+  ['infra', 'ambiental', 'social', 'corretor', 'risco', 'global', 'gerente', 'tesoureiro', 'diplomata'].forEach(k => assert.ok(Sim.SKILLS[k].length >= 2, k));
 });

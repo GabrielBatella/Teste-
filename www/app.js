@@ -24,13 +24,14 @@
     ['💵 Pagam dividendos todo mês', ['divid', 'fii']],
     ['🟡 Moderados', ['ouro', 'etf', 'dolar']],
     ['🔴 Arriscados: podem render muito mais', ['acoes', 'cripto', 'startup']],
+    ['🌍 Bolsas do mundo: sobem e caem com a economia de cada país', Sim.WORLD_ASSETS],
   ];
   const MISSIONS = {
     pop100: '👥 100 habitantes', pop500: '👥 500 habitantes', pop1500: '👥 1.500 habitantes', pop5000: '🌆 5.000 habitantes',
     nw50: '💰 R$ 50 mil de patrimônio', nw200: '💰 R$ 200 mil de patrimônio', nw1m: '💎 R$ 1 milhão de patrimônio',
     diver: '📈 Investir em 3 coisas diferentes', team: '👔 Contratar 3 funcionários', team10: '🧑‍🤝‍🧑 Montar uma equipe de 8 funcionários',
-    train: '🎓 Treinar um funcionário até o nível 5', clean: '🌿 Ar limpo com 300 habitantes', friends: '🕊️ Boa relação com todos os vizinhos',
-    treaty: '📜 Assinar 2 tratados comerciais', happy80: '😄 Deixar todo mundo muito feliz',
+    train: '🎓 Treinar um funcionário até o nível 5', clean: '🌿 Ar limpo com 300 habitantes', friends: '🕊️ Boa relação com 6 países', world: '🌍 Investir em 3 países diferentes',
+    treaty: '📜 Assinar 3 tratados comerciais', happy80: '😄 Deixar todo mundo muito feliz',
   };
 
   function save() { try { localStorage.setItem(SAVE, Sim.serialize(s)); } catch (e) {} }
@@ -49,7 +50,7 @@
 
   function setSpeed(n) {
     speed = n; clearInterval(timer);
-    if (n > 0 && !s.over) timer = setInterval(tick, [0, 2500, 1200][n]);
+    if (n > 0 && !s.over) timer = setInterval(tick, [0, 5000, 2400][n]);
     document.querySelectorAll('#speed button').forEach(b => b.classList.toggle('on', +b.dataset.speed === n));
   }
   function tick() {
@@ -99,7 +100,7 @@
     const kinds = Object.keys(c).filter(k => k !== 'prefeitura' && Sim.BUILDINGS[k]);
     const sky = '<span class="chipb">🏛️ Prefeitura</span>' + kinds.map(k => `<span class="chipb">${Sim.BUILDINGS[k].icon} ${c[k]}</span>`).join('');
     const groups = GROUPS.map(([title, keys]) => `<h4>${title}</h4><div class="assets">${keys.map(k => buildCard(k, c)).join('')}</div>`).join('');
-    const need = Sim.needs(s), free = Sim.freeTiles(s), lc = Sim.landCost(s);
+    const need = Sim.needs(s);
     const team = BUILDERS.filter(k => Sim.hired(s, k));
     const planner = team.length
       ? `<div class="card staffnote"><h3>🏗️ Equipe de obras</h3>${need.length
@@ -110,9 +111,6 @@
       ${t ? `<div class="tip"><span class="ico">${t[0]}</span><span>${t[1]}</span></div>` : '<div class="quiet">📰 Nenhuma reclamação por enquanto.</div>'}
       ${planner}
       <div class="card"><h3>🏙️ Sua cidade</h3><div class="sky">${sky}</div></div>
-      <div class="card ${free === 0 ? 'landwarn' : ''}"><h3>🧱 Terreno</h3>
-        <div class="row"><span>Terrenos livres</span><b class="${free === 0 ? 'neg' : ''}">${free}</b></div>
-        <div class="btns"><button class="btn ${free === 0 ? '' : 'sec'}" data-land="1" ${s.cash < lc ? 'disabled' : ''}>Comprar mais terreno<small>+${Sim.LOT_SIZE} terrenos · ${M(lc)}</small></button></div></div>
       <div class="minis">
         <div class="mini"><b>${meter(a.empRate)}</b>💼 Emprego</div>
         <div class="mini"><b>${meter(a.cov.edu)}</b>🏫 Escola</div>
@@ -132,13 +130,13 @@
     const chips = [500, 1000, 5000, 10000].map(v => `<button class="chip ${v === amount ? 'on' : ''}" data-amt="${v}">${M(v)}</button>`).join('');
     const card = d => {
       const x = s.assets[d.key], val = x.units * x.price, pl = x.spent > 0 ? (val / x.spent - 1) * 100 : 0;
-      const r = RISK[d.key], adv = Sim.hired(s, 'analista') ? Sim.advice(s, d.key) : null, y = Sim.assetYield(s, d.key);
+      const r = RISK[d.key] || ['🟡', 'Depende do país'], adv = Sim.hired(s, 'analista') ? Sim.advice(s, d.key) : null, y = Sim.assetYield(s, d.key);
       const pct1 = v => (v * 100).toFixed(2).replace('.', ',') + '%';
       const divLine = y.div > 0 ? `<span class="okchip">💵 Dividendos ${pct1(y.div)}/mês${val > 0 ? ' · ~' + M(val * y.div) + ' por mês' : ''}</span>` : '';
       return `<div class="card asset"><div class="top"><span class="ico">${d.icon}</span>
         <div class="nm">${d.name}<small>${r[0]} ${r[1]}</small></div>
         <div class="val">${M(val)}${x.units > 0 ? `<small class="${cls(pl)}">${pl >= 0 ? '▲' : '▼'} ${Math.abs(pl).toFixed(1)}%</small>` : ''}</div></div>
-        <div class="perks"><span>📈 Rende hoje ~${pct1(y.growth)}/mês</span>${divLine}</div>
+        <div class="perks"><span>📈 Rende hoje ~${pct1(y.growth)}/mês</span>${divLine}${d.country ? `<span>${s.world.econ[d.country] >= 1.1 ? '🌤️ Economia do país forte' : s.world.econ[d.country] <= 0.9 ? '⛈️ Economia do país fraca' : '☁️ Economia do país estável'}</span>` : ''}</div>
         ${adv ? `<div class="advice">📊 ${adv.icon} ${adv.text}</div>` : ''}
         <div class="btns"><button class="btn" data-buy="${d.key}" ${s.cash < amount ? 'disabled' : ''}>Comprar</button>
         <button class="btn sec" data-sell="${d.key}" ${x.units <= 0 ? 'disabled' : ''}>Vender</button>
@@ -174,6 +172,7 @@
       <div class="row"><span>💳 Dívida</span><b class="${s.debt ? 'neg' : ''}">${M(s.debt)}</b></div>
       ${Sim.foreignDebt(s) ? `<div class="row"><span>🌍 Dívida com outros países</span><b class="neg">${M(Sim.foreignDebt(s))}</b></div>` : ''}
       ${Sim.lentValue(s) ? `<div class="row"><span>🤝 A receber dos vizinhos</span><b class="pos">${M(Sim.lentValue(s))}</b></div>` : ''}
+      ${s.report && s.report.exports > 0 ? `<div class="row"><span>📜 Exportações (tratados)</span><b class="pos">${sign(s.report.exports)}</b></div>` : ''}
       ${s.report && s.report.dividends > 0 ? `<div class="row"><span>💵 Dividendos no último mês</span><b class="pos">${sign(s.report.dividends)}</b></div>` : ''}
       <div class="row"><span>Ganho por mês</span><b class="${cls(net)}">${sign(net)}</b></div></div>
     <div class="card"><h3>🏛️ Imposto da cidade</h3>
@@ -206,6 +205,7 @@
       body = `<div class="eff"><div class="effhead"><span>${ef[0]} ${ef[1]}</span></div>
           <i><b style="width:${Math.round(inf.efficiency * 100)}%;background:${ef[2]}"></b></i>
           <div class="mut" style="font-size:12px">Aguenta uma cidade de até ${inf.capacity.toLocaleString('pt-BR')} habitantes (a sua tem ${Math.floor(s.pop).toLocaleString('pt-BR')}).</div></div>
+        <div class="skills">${inf.skills.map(k2 => `<div class="${k2.on ? 'on' : 'off'}">${k2.on ? '✅' : '🔒 Nível ' + k2.lvl + ':'} ${k2.text}</div>`).join('')}</div>
         <div class="perks">${inf.lines.map(l => `<span>${l}</span>`).join('')}${inf.teamBonus > 1 ? `<span class="okchip">🔗 Time completo +${Math.round((inf.teamBonus - 1) * 100)}%</span>` : ''}<span class="warnchip">😅 Erra em ~${Math.round(inf.errorChance * 100)}% das decisões</span></div>
         <div class="btns">${train}</div>
         <div class="btns"><button class="btn ${auto ? '' : 'sec'}" data-auto="${k}">${auto ? '🤖 Decisões automáticas: LIGADAS' : '🤖 Decisões automáticas: DESLIGADAS'}</button>
@@ -267,7 +267,7 @@
         ${i.treaty ? '<div class="perks"><span class="okchip">📜 Tratado comercial ativo</span></div>' : ''}
         ${i.owed > 0 ? `<div class="row"><span>Você deve</span><b class="neg">${M(i.owed)}</b></div>` : ''}
         <div class="btns">
-          <button class="btn sec" data-gift="${n.key}" ${i.giftCd > 0 || s.cash < 600 ? 'disabled' : ''}>🎁 Presente ${M(600)}${i.giftCd > 0 ? '<small>espere um pouco</small>' : ''}</button>
+          <button class="btn sec" data-gift="${n.key}" ${i.giftCd > 0 || s.cash < Sim.GIFT_COST ? 'disabled' : ''}>🎁 Presente ${M(Sim.GIFT_COST)}${i.giftCd > 0 ? '<small>espere um pouco</small>' : ''}</button>
           ${i.treaty ? `<button class="btn sec" data-untreaty="${n.key}">📜 Cancelar tratado</button>`
             : `<button class="btn sec" data-treaty="${n.key}" ${i.rel < 60 || s.cash < Sim.TREATY_COST ? 'disabled' : ''}>📜 Tratado ${M(Sim.TREATY_COST)}<small>${i.rel < 60 ? 'relação precisa passar de 60' : '+' + M(Sim.TREATY_UPKEEP) + '/mês de custo'}</small></button>`}
         </div>
@@ -331,8 +331,7 @@
     else if (d.upgrade) { r = Sim.upgrade(s, d.upgrade); if (r.ok) toast('🎓 ' + Sim.STAFF[d.upgrade].name + ' subiu para o nível ' + Sim.levelOf(s, d.upgrade) + '!'); }
     else if (d.fire) { if (!confirm('Demitir ' + Sim.STAFF[d.fire].name + '? Ele perde o nível.')) return; r = Sim.fire(s, d.fire); if (r.ok) toast('Demitido.'); }
     else if (d.auto) { r = Sim.setAuto(s, d.auto, !Sim.active(s, d.auto)); }
-    else if (d.land) { r = Sim.buyLand(s); if (r.ok) toast('🧱 Mais ' + Sim.LOT_SIZE + ' terrenos!'); }
-    else if (d.gift) { r = Sim.gift(s, d.gift, 600); if (r.ok) toast('🎁 Presente enviado!'); }
+    else if (d.gift) { r = Sim.gift(s, d.gift, Sim.GIFT_COST); if (r.ok) toast('🎁 Presente enviado!'); }
     else if (d.treaty) { r = Sim.signTreaty(s, d.treaty); if (r.ok) toast('📜 Tratado assinado!'); }
     else if (d.untreaty) { if (!confirm('Cancelar o tratado? A relação piora.')) return; r = Sim.cancelTreaty(s, d.untreaty); }
     else if (d.fborrow) { r = Sim.borrowForeign(s, d.fborrow, Math.min(5000, Sim.foreignLimit(s, d.fborrow))); if (r.ok) toast('🏦 Empréstimo recebido!'); }
