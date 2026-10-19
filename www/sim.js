@@ -195,24 +195,6 @@
   const TRAIN_COST = [350, 750, 1250, 2000, 3000, 4750, 7500];   // para ir do nível 1→2, 2→3...
   const CAPACITY = [60, 110, 180, 290, 450, 700, 1100, 1800];       // habitantes que dá conta de atender
 
-  const GOALS = [
-    {id: 'pop100',  text: 'Chegar a 100 habitantes',  test: s => s.pop >= 100},
-    {id: 'pop500',  text: 'Chegar a 500 habitantes',  test: s => s.pop >= 500},
-    {id: 'pop1500', text: 'Chegar a 1.500 habitantes', test: s => s.pop >= 1500},
-    {id: 'pop5000', text: 'Chegar a 5.000 habitantes', test: s => s.pop >= 5000},
-    {id: 'nw50',    text: 'Patrimônio de R$ 50 mil',  test: s => netWorth(s) >= 50000},
-    {id: 'nw200',   text: 'Patrimônio de R$ 200 mil', test: s => netWorth(s) >= 200000},
-    {id: 'nw1m',    text: 'Patrimônio de R$ 1 milhão', test: s => netWorth(s) >= 1000000},
-    {id: 'diver',   text: 'Investir em 3 ativos diferentes', test: s => ASSETS.filter(a => s.assets[a.key].units > 0).length >= 3},
-    {id: 'team',    text: 'Contratar 3 funcionários', test: s => STAFF_ORDER.filter(k => hired(s, k)).length >= 3},
-    {id: 'team10',  text: 'Montar uma equipe de 8 funcionários', test: s => STAFF_ORDER.filter(k => hired(s, k)).length >= 8},
-    {id: 'train',   text: 'Treinar um funcionário até o nível 5', test: s => STAFF_ORDER.some(k => levelOf(s, k) >= 5)},
-    {id: 'clean',   text: 'Ar limpo com 300 habitantes', test: s => s.pop >= 300 && analyze(s).pollution === 0},
-    {id: 'friends', text: 'Boa relação com 6 países', test: s => NEIGHBORS.filter(n => s.world.rel[n.key] >= 70).length >= 6},
-    {id: 'treaty',  text: 'Assinar 3 tratados comerciais', test: s => NEIGHBORS.filter(n => s.world.treaty[n.key]).length >= 3},
-    {id: 'world',   text: 'Investir em 3 países diferentes', test: s => WORLD_ASSETS.filter(k => s.assets[k].units > 0).length >= 3},
-    {id: 'happy80', text: 'Felicidade acima de 80',   test: s => s.pop >= 50 && s.happy >= 80},
-  ];
 
   function mulberry(s) {
     s.seed = (s.seed + 0x6D2B79F5) | 0;
@@ -244,7 +226,7 @@
       tiles, lv: [], hist: [], histN: 0, landBought: 0, pop: 20, happy: 55, assets, mods: {econ: 1, econLeft: 0, upkeep: 1, upkeepLeft: 0},
       log: ['Bem-vindo, prefeito! Cuide da cidade e faça o dinheiro render.'],
       report: null, over: null, staff: defaultStaff(), staffSeen: {}, staffStats: {errors: 0, cost: 0},
-      market: {rate: BASE_RATE, prev: BASE_RATE}, world: newWorld(), lowHappy: 0, goals: {}, netHist: [10000],
+      market: {rate: BASE_RATE, prev: BASE_RATE}, world: newWorld(), lowHappy: 0, netHist: [10000],
     };
   }
 
@@ -950,7 +932,6 @@
     s.report = {taxes, rent, commerce, industry, exports, cashYield, dividends, income, maint, basic, salaries, diplomacy, interest, overdraft, expenses, net: income + dividends - expenses};
     s.netHist.push(netWorth(s)); if (s.netHist.length > 48) s.netHist.shift();
 
-    GOALS.forEach(g => { if (!s.goals[g.id] && g.test(s)) { s.goals[g.id] = s.month; note(s, `🏆 Meta cumprida: ${g.text}!`); } });
 
 
     s.lowHappy = s.pop > 0 && s.happy < 15 ? s.lowHappy + 1 : 0;
@@ -1315,7 +1296,7 @@
     } catch (e) { return null; }
   }
 
-  return {COLS, ROWS: START_ROWS, HALL, BUILDINGS, ASSETS, SAFE_ASSETS, RISKY_ASSETS, FIXED_ASSETS, BASE_RATE, assetYield, GOALS, STAFF, STAFF_ORDER, SALARY_ORDER, AREAS, MAX_LEVEL, NEIGHBORS,
+  return {COLS, ROWS: START_ROWS, HALL, BUILDINGS, ASSETS, SAFE_ASSETS, RISKY_ASSETS, FIXED_ASSETS, BASE_RATE, assetYield, STAFF, STAFF_ORDER, SALARY_ORDER, AREAS, MAX_LEVEL, NEIGHBORS,
     hired, active, levelOf, isUnlocked, lockReason, readiness, hireWarnings, DIFFICULTY, COST_HARD, EVENT_HARD, PUBLIC_ESC, isPublic, upkeepInfo, publicCosts, pressure, priceF, sizeF, phaseOf, PHASES, staffCost, salaryOf, efficiency, errorChance, staffInfo, upgrade, upgradeCost, teamBonus,
     loanRate, loanLimit, hire, fire, setAuto, recommend, recCity, recInfra, recGreen, recSocial, needs, advice, hint,
     picks: {city: pickCity, infra: pickInfra, green: pickGreen, social: pickSocial, asset: pickAsset, group: bestGroup}, TARGETS, freeTiles, buildCost, SKILLS, LOT_SIZE, GIFT_COST, TREATY_COST, TREATY_UPKEEP, FLOW, WORLD_ASSETS, LOAN_LIMIT, OVERDRAFT_LIMIT,

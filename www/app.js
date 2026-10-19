@@ -26,13 +26,6 @@
     ['🔴 Arriscados: podem render muito mais', ['acoes', 'cripto', 'startup']],
     ['🌍 Bolsas do mundo: sobem e caem com a economia de cada país', Sim.WORLD_ASSETS],
   ];
-  const MISSIONS = {
-    pop100: '👥 100 habitantes', pop500: '👥 500 habitantes', pop1500: '👥 1.500 habitantes', pop5000: '🌆 5.000 habitantes',
-    nw50: '💰 R$ 50 mil de patrimônio', nw200: '💰 R$ 200 mil de patrimônio', nw1m: '💎 R$ 1 milhão de patrimônio',
-    diver: '📈 Investir em 3 coisas diferentes', team: '👔 Contratar 3 funcionários', team10: '🧑‍🤝‍🧑 Montar uma equipe de 8 funcionários',
-    train: '🎓 Treinar um funcionário até o nível 5', clean: '🌿 Ar limpo com 300 habitantes', friends: '🕊️ Boa relação com 6 países', world: '🌍 Investir em 3 países diferentes',
-    treaty: '📜 Assinar 3 tratados comerciais', happy80: '😄 Deixar todo mundo muito feliz',
-  };
 
   function save() { try { localStorage.setItem(SAVE, Sim.serialize(s)); } catch (e) {} }
   function loadGame() {
@@ -391,11 +384,8 @@
   }
 
   function viewNews() {
-    const done = Sim.GOALS.filter(g => s.goals[g.id]).length;
-    const list = Sim.GOALS.map(g => `<div class="mission ${s.goals[g.id] ? 'done' : ''}"><span class="ico">${s.goals[g.id] ? '✅' : '⬜'}</span>${MISSIONS[g.id] || g.text}</div>`).join('');
     return `<div class="card"><h3>🎚️ Dificuldade: ${Math.round(Sim.DIFFICULTY * 100)}%</h3><div class="mut" style="font-size:14px">Custos da cidade e eventos ruins mais pesados. A equipe só ajuda se você escolher bem quem contratar e na hora certa.</div></div>
       <div class="card"><h3>📈 O jogo é progressivo</h3><div class="mut" style="font-size:14px">Quanto maior a cidade e quanto mais anos passam, mais caras ficam as obras, o treinamento e a manutenção, e mais pesados os eventos. O começo é fácil; depois cada passo exige mais tempo e mais cuidado, mesmo com a equipe certa. Não existe limite de tempo: jogue devagar.</div></div>
-      <div class="card"><h3>⭐ Missões (${done}/${Sim.GOALS.length})</h3>${list}</div>
       <div class="btns"><button class="btn red" id="newgame">Recomeçar jogo</button></div>`;
   }
 
