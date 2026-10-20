@@ -416,8 +416,7 @@
     s = Sim.newGame(); save(); $('over').classList.add('hidden'); tab = 'city'; render(); setSpeed(1);
   }
 
-  document.addEventListener('click', e => {
-    const t = e.target.closest('button'); if (!t) return;
+  function onButton(t) {
     const d = t.dataset;
     let r;
     if (t.id === 'awayok') { $('away').classList.add('hidden'); setSpeed(resumeSpeed); return; }
@@ -452,7 +451,42 @@
     else return;
     if (r && !r.ok) toast(r.msg);
     save(); render();
+    return r;
+  }
+  let suppressClick = 0;
+  document.addEventListener('click', e => {
+    if (Date.now() < suppressClick) { e.preventDefault(); return; }
+    const t = e.target.closest('button'); if (t) onButton(t);
   });
+
+  // ---------- Segurar o botão repete a ação (construir, demolir, evoluir, comprar, vender, imposto, empréstimo) ----------
+  const REPEATABLE = ['build', 'demo', 'evolve', 'buy', 'sell', 'tax', 'loan', 'pay'];
+  let hold = null;
+  function stopHold() {
+    if (!hold) return;
+    clearTimeout(hold.timer); if (hold.fired) suppressClick = Date.now() + 350; hold = null;
+  }
+  document.addEventListener('pointerdown', e => {
+    const t = e.target.closest('button');
+    if (!t || t.disabled || !REPEATABLE.some(k => t.dataset[k] != null)) return;
+    stopHold();
+    const snap = {id: '', dataset: {...t.dataset}};
+    hold = {fired: false, timer: null};
+    let wait = 170;
+    const go = () => {
+      if (!hold) return;
+      hold.fired = true;
+      const r = onButton(snap);
+      if (r && r.ok === false) return stopHold();          // acabou o dinheiro, o terreno ou o estoque: para sozinho
+      wait = Math.max(45, wait * 0.93);
+      hold.timer = setTimeout(go, wait);
+    };
+    hold.timer = setTimeout(go, 450);
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => document.addEventListener(ev, e => { if (ev !== 'pointerleave' || e.target === document.documentElement) stopHold(); }));
+  ['touchend', 'touchcancel'].forEach(ev => document.addEventListener(ev, stopHold));
+  window.addEventListener('blur', stopHold);
+  document.addEventListener('contextmenu', e => { if (hold || e.target.closest('button')) e.preventDefault(); });
 
   // ---------- Tempo longe do jogo ----------
   // O Android congela o app quando a tela apaga ou você troca de aplicativo, então ao voltar o jogo simula os
