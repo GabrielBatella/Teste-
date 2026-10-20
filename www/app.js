@@ -206,7 +206,17 @@
     const phase = `<div class="card asset phase"><div class="top"><span class="ico">${ph.icon}</span>
       <div class="nm">${ph.name}<small>Fase ${ph.n} de ${Sim.PHASES.length}${ph.next ? ` · a próxima (${ph.nextName}) começa com ${ph.next.toLocaleString('pt-BR')} habitantes` : ' · fase máxima'}</small></div></div>
       <div class="perks"><span>🏗️ Obras ${x2(ph.prices)}</span><span>🧾 Custos ${x2(ph.costs)}</span><span>⚠️ Eventos ${x2(ph.events)}</span></div></div>`;
+    const pop = Math.floor(s.pop), work = Math.floor(a.workers), emp = Math.floor(a.employed), unemp = Math.max(0, work - emp), free = Math.max(0, Math.floor(a.jobs - a.workers));
+    const people = `<div class="card"><h3>👥 Gente na cidade</h3>
+      <div class="row"><span>🏠 Moradores</span><b>${num(pop)}</b></div>
+      <div class="row"><span>🧑‍💼 Em idade de trabalhar</span><b>${num(work)}</b></div>
+      <div class="row"><span>✅ Trabalhando</span><b class="pos">${num(emp)}</b></div>
+      <div class="row"><span>😟 Sem emprego</span><b class="${unemp ? 'neg' : ''}">${num(unemp)}</b></div>
+      <div class="row"><span>💼 Vagas livres</span><b>${num(free)}</b></div>
+      <div class="eff"><i><b style="width:${work ? Math.round(emp / work * 100) : 100}%;background:${unemp ? 'var(--warn)' : 'var(--ok)'}"></b></i></div>
+      <div class="mut" style="font-size:12px">${num(a.jobs)} empregos no total · ${work ? Math.round(emp / work * 100) : 100}% de quem pode trabalhar está empregado</div></div>`;
     return `<div class="cityview"><div class="side">
+      ${people}
       ${phase}
       ${t ? `<div class="tip"><span class="ico">${t[0]}</span><span>${t[1]}</span></div>` : '<div class="quiet">📰 Nenhuma reclamação por enquanto.</div>'}
       ${planner}
