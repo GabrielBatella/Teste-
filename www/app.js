@@ -2,7 +2,7 @@
   const SAVE = 'cidadecapital-save-v1';
   const $ = id => document.getElementById(id);
   const M = Sim.money;
-  let s, tab = 'city', speed = 1, amount = 1000, timer = null, tickMs = 5000, sinceTick = 0, histFilter = 'all';
+  let s, tab = 'city', speed = 1, amount = 1000, timer = null, tickMs = 5000, sinceTick = 0, histFilter = 'all', mapFocus = 'capital';
 
   const TAGS = {
     casa: 'Moradia', predio: 'Muita moradia', loja: 'Empregos e lucro', fabrica: 'Empregos, mas suja',
@@ -227,7 +227,11 @@
   }
 
   function viewMap() {
-    return `<div class="mapwrap"><div id="map3d"></div>
+    const owned = Sim.NEIGHBORS.map(n => Sim.colonyInfo(s, n.key)).filter(i => i.owned);
+    if (mapFocus !== 'capital' && mapFocus !== 'world' && !owned.some(i => i.key === mapFocus)) mapFocus = 'capital';
+    const chips = [['capital', '🏠 Minha cidade'], ['world', '🌍 Mundo'], ...owned.map(i => [i.key, `${i.icon} ${Sim.NEIGHBORS.find(n => n.key === i.key).short}${i.nation ? ' 🚩' : ''}`])]
+      .map(([k, label]) => `<button class="chip ${k === mapFocus ? 'on' : ''}" data-mapf="${k}">${label}</button>`).join('');
+    return `<div class="mapwrap"><div class="chips mapchips">${chips}</div><div id="map3d"></div>
       <div class="maphint">👆 Arraste para girar · ✌️ pinça para aproximar · toque duplo reinicia</div>
       <div class="legend">${['casa', 'predio', 'loja', 'fabrica', 'escola', 'hospital', 'policia', 'parque'].map(k => `<span>${Sim.BUILDINGS[k].icon} ${Sim.BUILDINGS[k].name}</span>`).join('')}</div>
       <div class="mut" style="font-size:13px;margin-top:8px">É só para olhar: a cidade cresce e muda sozinha conforme você constrói e evolui os prédios na aba Cidade.</div></div>`;
@@ -239,11 +243,12 @@
       const x = s.assets[d.key], val = x.units * x.price, pl = x.spent > 0 ? (val / x.spent - 1) * 100 : 0;
       const r = RISK[d.key] || ['🟡', 'Depende do país'], adv = Sim.hired(s, 'analista') ? Sim.advice(s, d.key) : null, y = Sim.assetYield(s, d.key);
       const pct1 = v => (v * 100).toFixed(2).replace('.', ',') + '%';
+      const liq = Sim.assetLiquidity(s, d.key), satur = val > 0 && liq < 0.9 ? `<span class="warnchip">🌊 Mercado saturado: rende ${Math.round(liq * 100)}% do normal</span>` : '';
       const divLine = y.div > 0 ? `<span class="okchip">💵 Dividendos ${pct1(y.div)}/mês${val > 0 ? ' · ~' + M(val * y.div) + ' por mês' : ''}</span>` : '';
       return `<div class="card asset"><div class="top"><span class="ico">${d.icon}</span>
         <div class="nm">${d.name}<small>${r[0]} ${r[1]}</small></div>
         <div class="val">${M(val)}${x.units > 0 ? `<small class="${cls(pl)}">${pl >= 0 ? '▲' : '▼'} ${Math.abs(pl).toFixed(1)}%</small>` : ''}</div></div>
-        <div class="perks"><span>📈 Rende hoje ~${pct1(y.growth)}/mês</span>${divLine}${d.country ? `<span>${s.world.econ[d.country] >= 1.1 ? '🌤️ Economia do país forte' : s.world.econ[d.country] <= 0.9 ? '⛈️ Economia do país fraca' : '☁️ Economia do país estável'}</span>` : ''}</div>
+        <div class="perks"><span>📈 Rende hoje ~${pct1(y.growth * (y.growth > 0 ? liq : 1))}/mês</span>${divLine}${satur}${d.country ? `<span>${s.world.econ[d.country] >= 1.1 ? '🌤️ Economia do país forte' : s.world.econ[d.country] <= 0.9 ? '⛈️ Economia do país fraca' : '☁️ Economia do país estável'}</span>` : ''}</div>
         ${adv ? `<div class="advice">📊 ${adv.icon} ${adv.text}</div>` : ''}
         <div class="btns"><button class="btn" data-buy="${d.key}" ${s.cash < amount ? 'disabled' : ''}>Comprar</button>
         <button class="btn sec" data-sell="${d.key}" ${x.units <= 0 ? 'disabled' : ''}>Vender</button>
@@ -256,7 +261,9 @@
     const m = s.market, up = m.rate - m.prev;
     const rateCard = `<div class="card"><h3>🏛️ Juros do país: ${(m.rate * 100).toFixed(2).replace('.', ',')}% ao mês ${Math.abs(up) < 0.00005 ? '➖' : up > 0 ? '🔺' : '🔻'}</h3>
       <div class="mut" style="font-size:14px">${m.rate >= 0.0085 ? 'Juros altos: a renda fixa está pagando bem, mas as ações sofrem.' : m.rate <= 0.0045 ? 'Juros baixos: a renda fixa paga pouco. Os investimentos de risco ficam mais atraentes.' : 'Juros normais.'} Cada banco paga um múltiplo disso, então a renda fixa muda de rendimento com o tempo.</div></div>`;
-    return `${hint}${rateCard}${auto}<div class="chips">${chips}</div>${cards}`;
+    const big = Sim.ASSETS.reduce((n, d) => n + (Sim.assetLiquidity(s, d.key) < 0.9 && s.assets[d.key].units > 0 ? 1 : 0), 0), ms = Sim.marketScale(s);
+    const depthCard = `<div class="card ${big ? 'staffnote' : ''}"><h3>🌊 O mercado tem limite</h3><div class="mut" style="font-size:14px">Cada investimento só aguenta uma certa quantia: dinheiro demais num lugar só rende cada vez menos. ${big ? `<b>${big} ${big === 1 ? 'investimento está saturado' : 'investimentos estão saturados'}.</b> ` : ''}Espalhe em outros ativos e países, ou compre cidades e países na aba Mundo: isso amplia o mercado (hoje ×${ms.toFixed(1).replace('.', ',')}).</div></div>`;
+    return `${hint}${rateCard}${depthCard}${auto}<div class="chips">${chips}</div>${cards}`;
   }
 
   function manager(a) {
@@ -405,11 +412,12 @@
     const cityRows = Sim.NEIGHBORS.map(n => Sim.colonyInfo(s, n.key));
     const mine = cityRows.filter(i => i.owned), colNet = mine.reduce((t, i) => t + i.net, 0);
     const myCities = mine.length ? `<div class="card"><h3>🏙️ Minhas cidades no exterior (${mine.length})</h3><div class="big pos">+${M(Math.round(colNet))}</div><div class="mut" style="text-align:center">por mês, já no seu caixa</div>
-      ${mine.map(i => `<div class="colony ${i.danger ? 'danger' : ''}"><div class="top"><span class="ico">${i.icon}</span><div class="nm">${i.name}<small>Nível ${i.level}/${Sim.COL_MAX} · ${i.pop.toLocaleString('pt-BR')} habitantes</small></div><div class="val pos">+${M(Math.round(i.net))}<small>por mês</small></div></div>
+      ${mine.map(i => `<div class="colony ${i.danger ? 'danger' : ''}"><div class="top"><span class="ico">${i.icon}</span><div class="nm">${i.name} ${i.nation ? '🚩' : ''}<small>${i.nation ? 'País inteiro · ' : ''}Nível ${i.level}/${i.maxLevel} · ${i.pop.toLocaleString('pt-BR')} habitantes</small></div><div class="val pos">+${M(Math.round(i.net))}<small>por mês</small></div></div>
         ${i.danger ? `<div class="supline bad">⚠️ A relação com ${i.name} está ruim${i.trouble ? ` (${i.trouble}/5 meses de risco)` : ''}: a renda caiu e eles podem tomar a cidade. Mande presentes!</div>` : ''}
         ${i.upgrading ? `<div class="training"><div class="effhead">🏗️ Crescendo para o nível ${i.upgrading.to}…</div><i><b style="width:${Math.round((1 - i.upgrading.left / i.upgrading.total) * 100)}%;background:var(--acc)"></b></i><small class="mut">faltam ${i.upgrading.left} meses</small></div>` : ''}
         <div class="btns">${i.upCost == null ? '<button class="btn sec" disabled>⭐ Nível máximo</button>' : `<button class="btn" data-cup="${i.key}" ${i.upgrading || s.cash < i.upCost ? 'disabled' : ''}>🏗️ Investir na cidade<small>${M(i.upCost)} · leva ${i.upMonths} meses · mais renda e gente</small></button>`}
-        <button class="btn sec" data-csell="${i.key}" style="flex:0 0 auto">Vender<small>${M(i.sellValue)}</small></button></div></div>`).join('')}</div>` : '';
+        <button class="btn sec" data-csell="${i.key}" style="flex:0 0 auto">Vender<small>${M(i.sellValue)}</small></button></div>
+        ${i.nation ? '<div class="perks"><span class="okchip">🚩 Você governa o país: ele rende 3× e ninguém toma</span></div>' : `<div class="btns"><button class="btn sec" data-annex="${i.key}" ${!i.canAnnex || s.cash < i.annexPrice ? 'disabled' : ''}>🚩 Comprar o país inteiro · ${M(i.annexPrice)}<small>${i.annexWhy ? i.annexWhy : 'rende 3×, amplia muito a bolsa dele e ninguém toma'}</small></button></div>`}</div>`).join('')}</div>` : '';
     const lent = w.lent.length ? `<div class="card"><h3>🤝 Empréstimos que você fez</h3>${w.lent.map(l => {
       const n = Sim.NEIGHBORS.find(x => x.key === l.who);
       return `<div class="row"><span>${n.icon} ${n.name}</span><span>${l.left}x de ${M(l.monthly)}</span></div>`;
@@ -430,12 +438,12 @@
   function render() {
     header();
     document.querySelectorAll('#tabs button').forEach(b => { b.classList.toggle('on', b.dataset.tab === tab); if (b.dataset.tab === 'world') b.classList.toggle('alert', !!(s.world.request || s.world.dilemma) && !propRef); if (b.dataset.tab === 'team') b.classList.toggle('alert', Sim.STAFF_ORDER.some(k => Sim.hired(s, k) && Sim.staffInfo(s, k).perfWarn) || !!(s.offer && !propRef)); });
-    if (tab === 'map' && $('map3d')) { renderProp(); if (window.City3D) City3D.show(s); return; }
+    if (tab === 'map' && $('map3d')) { renderProp(); if (window.City3D) City3D.show(s, mapFocus); return; }
     const keep = $('view').scrollTop;
     $('view').innerHTML = {city: viewCity, map: viewMap, invest: viewInvest, fin: viewFin, world: viewWorld, team: viewTeam, news: viewNews}[tab]();
     $('view').scrollTop = keep;
     renderProp();
-    if (tab === 'map' && window.City3D) City3D.show(s);
+    if (tab === 'map' && window.City3D) City3D.show(s, mapFocus);
   }
 
   function showOver() {
@@ -456,6 +464,7 @@
     if (t.id === 'newgame') { if (confirm('Apagar a cidade e recomeçar?')) newGame(); return; }
     if (t.id === 'histbtn') return showHist();
     if (t.id === 'histclose') { $('hist').classList.add('hidden'); return; }
+    if (d.mapf) { mapFocus = d.mapf; $('view').innerHTML = viewMap(); if (window.City3D) City3D.show(s, mapFocus); return; }
     if (d.hf) { histFilter = d.hf; return showHist(); }
     if (d.tab) { tab = d.tab; if (tab !== 'map' && window.City3D) City3D.hide(); render(); $('view').scrollTop = 0; return; }
     if (d.speed != null) return setSpeed(+d.speed);
@@ -479,6 +488,7 @@
     else if (d.motivate) { r = Sim.motivate(s, d.motivate); if (r.ok) toast('💵 Bônus pago!'); }
     else if (d.offer != null) { r = Sim.answerOffer(s, d.offer === '1'); }
     else if (d.cbuy) { r = Sim.buyColony(s, d.cbuy); if (r.ok) toast('🏙️ Cidade comprada!'); }
+    else if (d.annex) { if (!confirm('Comprar o país inteiro?')) return; r = Sim.annexColony(s, d.annex); if (r.ok) toast('🚩 País comprado!'); }
     else if (d.cup) { r = Sim.upgradeColony(s, d.cup); if (r.ok) toast('🏗️ Obras começaram: ' + r.months + ' meses.'); }
     else if (d.csell) { if (!confirm('Vender essa cidade?')) return; r = Sim.sellColony(s, d.csell); if (r.ok) toast('Cidade vendida.'); }
     else if (d.req != null) { r = Sim.answerRequest(s, d.req === '1'); }

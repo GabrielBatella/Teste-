@@ -1445,3 +1445,44 @@ test('cidade no exterior é tomada se a relação ficar péssima por meses', () 
   t.world.rel.uniao = 20; Sim.step(t); t.world.rel.uniao = 70; for (let m = 0; m < 8; m++) { t.world.rel.uniao = 70; t.cash = 5e8; Sim.step(t); }
   assert.ok(Sim.colonyInfo(t, 'uniao').owned, 'se a relação melhora, o risco passa');
 });
+
+// ---------- Fim de jogo: mercado com limite e países ----------
+test('mercado com limite: quantias gigantes rendem proporcionalmente muito menos', () => {
+  const cresce = cash0 => { let tot = 0; const N = 4;
+    for (let k = 1; k <= N; k++) { const s = Sim.newGame(900 + k); s.cash = cash0 * 2; s.pop = 3000; Sim.buy(s, 'etf', cash0);
+      const v0 = s.assets.etf.units * s.assets.etf.price; for (let m = 0; m < 60; m++) { s.pop = 3000; s.lowHappy = 0; s.cash = Math.max(s.cash, 1e6); Sim.step(s); if (s.over) break; }
+      tot += s.assets.etf.units * s.assets.etf.price / v0; }
+    return tot / N; };
+  const pequeno = cresce(2e4), gigante = cresce(2e10);
+  assert.ok(gigante < pequeno * 0.8 || gigante < 1.15, `saturado rende menos: ${pequeno} x ${gigante}`);
+  const s = Sim.newGame(1); s.cash = 1e10; Sim.buy(s, 'etf', 5e9);
+  assert.ok(Sim.assetLiquidity(s, 'etf') < 0.05); assert.ok(Sim.assetLiquidity(Sim.newGame(1), 'etf') === 1);
+  s.cash = 1e10; s.pop = 3000; s.world.rel.reino = 70; assert.ok(Sim.buyColony(s, 'reino').ok);
+  const antes = Sim.marketScale(Sim.newGame(1)); assert.ok(Sim.marketScale(s) > antes, 'cidades ampliam o mercado');
+});
+
+test('comprar o país inteiro: exige nível, relação e cidade grande; rende 3x e não pode ser tomado', () => {
+  const s = rica(350); s.cash = 1e10; s.pop = 12000; s.world.rel.reino = 80;
+  assert.equal(Sim.annexColony(s, 'reino').ok, false, 'precisa ter uma cidade lá');
+  assert.ok(Sim.buyColony(s, 'reino').ok);
+  assert.equal(Sim.colonyInfo(s, 'reino').canAnnex, false, 'cidade precisa chegar ao nível 5');
+  for (let L = 1; L < 5; L++) { assert.ok(Sim.upgradeColony(s, 'reino').ok); for (let m = 0; m < 30; m++) { s.pop = 12000; s.lowHappy = 0; s.world.rel.reino = 80; s.cash = 1e10; Sim.step(s); } }
+  s.pop = 12000; s.world.rel.reino = 80; const i0 = Sim.colonyInfo(s, 'reino'); assert.equal(i0.level, 5); assert.ok(i0.canAnnex && i0.annexPrice > 5 * Sim.colonyInfo(s, 'reino').upCost);
+  const c = s.cash; assert.ok(Sim.annexColony(s, 'reino').ok, 'compra o país'); assert.equal(s.cash, c - i0.annexPrice);
+  const i1 = Sim.colonyInfo(s, 'reino'); assert.ok(i1.nation && i1.net > i0.net * 2.5 && i1.pop > i0.pop * 5 && i1.maxLevel === Sim.NATION_MAX);
+  assert.equal(Sim.annexColony(s, 'reino').ok, false);
+  for (let m = 0; m < 10; m++) { s.world.rel.reino = 5; s.pop = 12000; s.lowHappy = 0; s.cash = 1e10; Sim.step(s); }
+  assert.ok(Sim.colonyInfo(s, 'reino').owned, 'país seu não é tomado');
+});
+
+test('mapa 3D: cidades de outros países crescem com o nível e são sempre iguais para o mesmo país', () => {
+  require('../www/city3d.js');
+  const sy = globalThis.City3D._synth;
+  const a = sy({key: 'reino', level: 1, nation: false}), b = sy({key: 'reino', level: 10, nation: false}), n = sy({key: 'reino', level: 10, nation: true});
+  assert.ok(b.tiles.length > a.tiles.length * 3 && n.tiles.length > b.tiles.length);
+  assert.deepEqual(sy({key: 'reino', level: 6, nation: false}), sy({key: 'reino', level: 6, nation: false}));
+  assert.notDeepEqual(sy({key: 'reino', level: 6, nation: false}).tiles, sy({key: 'imperio', level: 6, nation: false}).tiles);
+  assert.equal(a.tiles[0], 'prefeitura');
+  assert.ok(b.lv.filter(v => v > 1).length > a.lv.filter(v => v > 1).length, 'nível alto tem prédios mais evoluídos');
+  b.tiles.concat(n.tiles).forEach(k => assert.ok(k === 'prefeitura' || Sim.BUILDINGS[k], k));
+});

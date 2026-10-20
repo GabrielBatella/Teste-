@@ -393,15 +393,16 @@
   }
 
   // ---------- Cidades em outros países: filiais que rendem todo mês ----------
-  const COLONY_MIN_POP = 2000, COLONY_MIN_REL = 55, COL_MAX = 10;
+  const COLONY_MIN_POP = 2000, COLONY_MIN_REL = 55, COL_MAX = 10, NATION_MAX = 15, NATION_MULT = 3, NATION_MIN_POP = 10000, NATION_MIN_REL = 70, NATION_MIN_LEVEL = 5;
+  const colMax = c => c.nation ? NATION_MAX : COL_MAX;
   const colonyScaleNow = s => Math.max(25000, 0.06 * Math.max(0, netWorth(s)));
   function colonyPrice(s, key) { return Math.round(colonyScaleNow(s) * (0.5 + nb(key).wealth / 60000) * clamp(s.world.econ[key], 0.7, 1.3) / 1000) * 1000; }
-  const colonyPop = c => Math.round(3000 * Math.pow(c.scale / 25000, 0.35) * Math.pow(c.level, 1.4));
-  const colonyUpCost = c => Math.round(c.scale * 0.10 * Math.pow(1.25, c.level - 1));
+  const colonyPop = c => Math.round(3000 * Math.pow(c.scale / 25000, 0.35) * Math.pow(c.level, 1.4) * (c.nation ? 8 : 1));
+  const colonyUpCost = c => Math.round(c.scale * 0.10 * Math.pow(1.25, c.level - 1) * (c.nation ? NATION_MULT : 1));
   const colonyUpMonths = c => 4 + 2 * c.level;
   function colonyNet(s, c) {
     const w = s.world, rel = w.rel[c.key], relF = rel >= 45 ? 1 : rel >= 30 ? 0.7 : 0.4;
-    return c.scale * (0.004 + 0.0025 * (c.level - 1)) * clamp(w.econ[c.key], 0.6, 1.4) * relF * (w.treaty[c.key] ? 1.1 : 1);
+    return c.scale * (0.004 + 0.0025 * (c.level - 1)) * (c.nation ? NATION_MULT : 1) * clamp(w.econ[c.key], 0.6, 1.4) * relF * (w.treaty[c.key] ? 1.1 : 1);
   }
   const colonyValue = c => (c.cost + c.invested) * 0.8;
   const coloniesList = s => Object.values(s.colonies || {});
@@ -413,8 +414,23 @@
       const why = s.pop < COLONY_MIN_POP ? `sua cidade precisa de ${COLONY_MIN_POP.toLocaleString('pt-BR')} habitantes` : rel < COLONY_MIN_REL ? `relação precisa passar de ${COLONY_MIN_REL}` : null;
       return {...base, price, canBuy: !why, why, preview: Math.round(colonyScaleNow(s) * 0.004 * clamp(w.econ[key], 0.6, 1.4))};
     }
-    return {...base, level: c.level, pop: colonyPop(c), net: colonyNet(s, c), upCost: c.level < COL_MAX ? colonyUpCost(c) : null, upMonths: colonyUpMonths(c), upgrading: c.up ? {...c.up} : null,
+    const ap = annexPrice(s, key), awhy = c.nation ? null : s.pop < NATION_MIN_POP ? `sua cidade precisa de ${NATION_MIN_POP.toLocaleString('pt-BR')} habitantes` : c.level < NATION_MIN_LEVEL ? `a cidade lá precisa chegar ao nível ${NATION_MIN_LEVEL}` : rel < NATION_MIN_REL ? `relação precisa passar de ${NATION_MIN_REL}` : null;
+    return {...base, nation: !!c.nation, maxLevel: colMax(c), annexPrice: ap, canAnnex: !c.nation && !awhy, annexWhy: awhy, level: c.level, pop: colonyPop(c), net: colonyNet(s, c), upCost: c.level < colMax(c) ? colonyUpCost(c) : null, upMonths: colonyUpMonths(c), upgrading: c.up ? {...c.up} : null,
       sellValue: Math.round(colonyValue(c) * 0.9), danger: rel < 35, trouble: c.bad || 0, invested: c.invested};
+  }
+  const annexPrice = (s, key) => Math.round(colonyScaleNow(s) * (0.5 + nb(key).wealth / 60000) * clamp(s.world.econ[key], 0.7, 1.3) * 4 / 1000) * 1000;
+  function annexColony(s, key) {
+    const c = (s.colonies || {})[key];
+    if (s.over) return {ok: false, msg: 'O jogo acabou.'};
+    if (!c) return {ok: false, msg: 'Compre uma cidade lá primeiro.'};
+    if (c.nation) return {ok: false, msg: 'O país já é seu.'};
+    const i = colonyInfo(s, key);
+    if (!i.canAnnex) return {ok: false, msg: 'Ainda não: ' + i.annexWhy + '.'};
+    if (s.cash < i.annexPrice) return {ok: false, msg: 'Dinheiro insuficiente.'};
+    s.cash -= i.annexPrice; c.cost += i.annexPrice; c.nation = true; c.bad = 0; c.up = null;
+    addRel(s, key, 10);
+    worldNote(s, `🚩 ${nb(key).name} agora é seu! O país inteiro passa a render para você.`);
+    return {ok: true, price: i.annexPrice};
   }
   function buyColony(s, key) {
     if (s.over) return {ok: false, msg: 'O jogo acabou.'};
@@ -434,7 +450,7 @@
     const c = (s.colonies || {})[key];
     if (!c) return {ok: false, msg: 'Você não tem cidade lá.'};
     if (c.up) return {ok: false, msg: 'Já está em obras.'};
-    if (c.level >= COL_MAX) return {ok: false, msg: 'Já está no nível máximo.'};
+    if (c.level >= colMax(c)) return {ok: false, msg: 'Já está no nível máximo.'};
     const cost = colonyUpCost(c);
     if (s.cash < cost) return {ok: false, msg: 'Dinheiro insuficiente.'};
     s.cash -= cost; c.invested += cost; c.up = {to: c.level + 1, left: colonyUpMonths(c), total: colonyUpMonths(c)};
@@ -453,7 +469,8 @@
     coloniesList(s).forEach(c => {
       if (c.up && --c.up.left <= 0) { c.level = c.up.to; c.up = null; note(s, `🏗️ A cidade de ${nb(c.key).name} chegou ao nível ${c.level}!`); }
       net += colonyNet(s, c);
-      if (s.world.rel[c.key] < 25) {
+      if (c.nation) { /* país seu: não pode ser tomado */ }
+      else if (s.world.rel[c.key] < 25) {
         c.bad = (c.bad || 0) + 1;
         if (c.bad === 1) worldNote(s, `⚠️ ${nb(c.key).name} está furioso: sua cidade lá corre risco de ser tomada!`);
         if (c.bad >= 5) { delete s.colonies[c.key]; worldNote(s, `🚫 ${nb(c.key).name} tomou a sua cidade! Você perdeu o investimento.`); }
@@ -461,6 +478,20 @@
     });
     s.colonyNet = net; s.cash += net;
   }
+
+  // ---------- Profundidade do mercado: dinheiro demais num lugar só rende cada vez menos ----------
+  // Evita a bola de neve dos bilhões: acima da "profundidade" de cada investimento, o ganho vai caindo.
+  // Comprar cidades e países amplia o mercado e abre espaço para realocar o dinheiro.
+  const DEPTH = {poupanca: 1.2e6, tesouro: 5e6, cdb: 8e6, cdb_b: 3e6, cdb_c: 2e6, cdb_d: 1.2e6, divid: 2.4e6, fii: 2.4e6, ouro: 2e6, etf: 5e6, dolar: 2e6, acoes: 1.6e6, cripto: 6e5, startup: 3e5};
+  const marketScale = s => 1 + coloniesList(s).reduce((t, c) => t + (c.nation ? 3 + 0.5 * c.level : 0.25 * c.level), 0);
+  function assetDepth(s, key) {
+    const d = ASSETS.find(x => x.key === key);
+    if (d && d.country) { const c = (s.colonies || {})[d.country]; return 1.8e6 * Math.sqrt(nb(d.country).wealth / 50000) * marketScale(s) * (c ? (c.nation ? 6 : 2) : 1); }
+    return (DEPTH[key] || 2e6) * marketScale(s);
+  }
+  const liquidity = (s, key, pos) => 1 / (1 + Math.max(0, pos) / assetDepth(s, key));
+  function assetLiquidity(s, key) { const x = s.assets[key]; return liquidity(s, key, x.units * x.price); }
+  const cashLiquidity = (s, spare) => 1 / (1 + Math.max(0, spare) / (1.2e7 * marketScale(s)));
 
   const pct = v => Math.round(v * 100) + '%';
   const rate2 = v => (v * 100).toFixed(2).replace('.', ',') + '%';
@@ -1051,7 +1082,8 @@
     let dividends = 0;
     ASSETS.forEach(d => {
       const x = s.assets[d.key], y = assetYield(s, d.key);
-      x.price = Math.min(d.cap || 1e12, x.price * Math.max(0.2, 1 + y.growth + d.vol * gauss(s)));
+      const liq = liquidity(s, d.key, x.units * x.price), gr = y.growth > 0 ? y.growth * liq : y.growth;
+      x.price = Math.min(d.cap || 1e12, x.price * Math.max(0.2, 1 + gr + d.vol * gauss(s)));
       // Crise de confiança ou quebra de banco
       if (d.bank) {
         const r = mulberry(s);
@@ -1059,10 +1091,10 @@
         else if (d.scare && r < d.scare + (d.fail || 0)) { x.price *= 1 - d.hit; note(s, `⚠️ ${d.name.replace(' (CDB)', '')} passou por uma crise de confiança: o CDB caiu ${Math.round(d.hit * 100)}%.`); }
       }
       x.hist.push(x.price); if (x.hist.length > 36) x.hist.shift();
-      if (d.div && x.units > 0) dividends += x.units * x.price * d.div;
+      if (d.div && x.units > 0) dividends += x.units * x.price * d.div * liq;
     });
     // O Gerente Financeiro faz o caixa parado render
-    const cashYield = Math.max(0, s.cash - reserve(s, a)) * 0.0012 * pw(s, 'gerente');
+    const idle = Math.max(0, s.cash - reserve(s, a)), cashYield = idle * 0.0012 * pw(s, 'gerente') * cashLiquidity(s, idle);
     dividends += cashYield;
     s.cash += dividends;
     if (s.mods.econLeft > 0) s.mods.econLeft--;
@@ -1464,7 +1496,7 @@
   }
 
   return {COLS, ROWS: START_ROWS, HALL, BUILDINGS, ASSETS, SAFE_ASSETS, RISKY_ASSETS, FIXED_ASSETS, BASE_RATE, assetYield, STAFF, STAFF_ORDER, SALARY_ORDER, AREAS, MAX_LEVEL, NEIGHBORS,
-    hired, active, levelOf, isUnlocked, lockReason, readiness, hireWarnings, DIFFICULTY, COST_HARD, EVENT_HARD, PUBLIC_ESC, isPublic, upkeepInfo, publicCosts, pressure, priceF, sizeF, phaseOf, PHASES, staffCost, salaryOf, efficiency, errorChance, staffInfo, upgrade, train, trainMonths, motivate, answerOffer, offerSalary, starsOf, PERF_WARN, colonyInfo, buyColony, upgradeColony, sellColony, coloniesList, COLONY_MIN_POP, COLONY_MIN_REL, COL_MAX, upgradeCost, teamBonus,
+    hired, active, levelOf, isUnlocked, lockReason, readiness, hireWarnings, DIFFICULTY, COST_HARD, EVENT_HARD, PUBLIC_ESC, isPublic, upkeepInfo, publicCosts, pressure, priceF, sizeF, phaseOf, PHASES, staffCost, salaryOf, efficiency, errorChance, staffInfo, upgrade, train, trainMonths, motivate, answerOffer, offerSalary, starsOf, PERF_WARN, colonyInfo, buyColony, annexColony, assetLiquidity, assetDepth, marketScale, NATION_MIN_POP, NATION_MIN_REL, NATION_MIN_LEVEL, NATION_MAX, upgradeColony, sellColony, coloniesList, COLONY_MIN_POP, COLONY_MIN_REL, COL_MAX, upgradeCost, teamBonus,
     loanRate, loanLimit, hire, fire, setAuto, recommend, recCity, recInfra, recGreen, recSocial, needs, advice, hint,
     picks: {city: pickCity, infra: pickInfra, green: pickGreen, social: pickSocial, asset: pickAsset, group: bestGroup}, TARGETS, freeTiles, buildCost, SKILLS, LOT_SIZE, GIFT_COST, TREATY_COST, TREATY_UPKEEP, FLOW, WORLD_ASSETS, LOAN_LIMIT, OVERDRAFT_LIMIT,
     worldInfo, worldFactor, gift, signTreaty, cancelTreaty, borrowForeign, repayForeign, answerRequest, answerDilemma, foreignDebt, lentValue, foreignRate, foreignLimit,

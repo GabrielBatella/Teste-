@@ -185,3 +185,5 @@ nav button{font-size:20px}
 .colony.danger{outline:2px solid var(--bad)}
 .colony .top{display:flex;gap:10px;align-items:center}.colony .ico{font-size:30px}.colony .nm{font-size:15px;font-weight:700}.colony .nm small{display:block;font-weight:400;color:var(--mut);font-size:12px}
 .colony .val{margin-left:auto;text-align:right;font-weight:800;font-size:15px}.colony .val small{display:block;font-size:11px;color:var(--mut);font-weight:400}
+
+.mapchips{overflow-x:auto;margin-bottom:6px;flex:0 0 auto;-webkit-overflow-scrolling:touch}.mapchips .chip{flex:0 0 auto;padding:8px 14px;font-size:14px;white-space:nowrap}
