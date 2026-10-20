@@ -179,3 +179,9 @@ nav button{font-size:20px}
 .training{flex:1 1 100%;background:#0b121a;border-radius:14px;padding:10px 12px}
 .training .effhead{font-size:14px;font-weight:700;margin-bottom:6px}
 .training i{display:block;height:8px;background:#223148;border-radius:5px;overflow:hidden;margin-bottom:5px}.training i b{display:block;height:100%;border-radius:5px}
+
+.card.asset.bad{border:2px solid var(--bad)}
+.colony{background:#0b121a;border-radius:14px;padding:10px 12px;margin-top:10px}
+.colony.danger{outline:2px solid var(--bad)}
+.colony .top{display:flex;gap:10px;align-items:center}.colony .ico{font-size:30px}.colony .nm{font-size:15px;font-weight:700}.colony .nm small{display:block;font-weight:400;color:var(--mut);font-size:12px}
+.colony .val{margin-left:auto;text-align:right;font-weight:800;font-size:15px}.colony .val small{display:block;font-size:11px;color:var(--mut);font-weight:400}

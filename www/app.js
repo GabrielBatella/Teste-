@@ -90,6 +90,7 @@
     const w = s.world;
     if (w.request) return {obj: w.request, kind: 'req'};
     if (w.dilemma) return {obj: w.dilemma, kind: 'dil'};
+    if (s.offer) return {obj: s.offer, kind: 'offer'};
     return null;
   }
   function renderProp() {
@@ -103,6 +104,18 @@
         head = `📨 ${n.icon} ${n.name} pede dinheiro emprestado`;
         text = `Querem <b>${M(r.amount)}</b> e prometem pagar em ${r.months} meses com juros. Existe risco de calote.`;
         btns = `<button class="btn" data-req="1" ${s.cash < r.amount ? 'disabled' : ''}>Aceitar · emprestar ${M(r.amount)}</button><button class="btn sec" data-req="0">Recusar</button>`;
+      } else if (p.kind === 'offer') {
+        const o = p.obj, f = Sim.STAFF[o.k];
+        if (o.kind === 'poach') {
+          head = `📨 Outra empresa quer levar ${f.icon} ${f.name}`;
+          text = `${f.name} (nível ${Sim.levelOf(s, o.k)}) recebeu uma proposta da concorrência. Para ficar, quer um <b>aumento de 30%</b> no salário. Se você não responder, ele vai embora e leva o nível.`;
+          btns = `<button class="btn" data-offer="1">Dar o aumento</button><button class="btn sec" data-offer="0">Deixar ir</button>`;
+        } else {
+          const sal = Sim.offerSalary(s, o), cur = Sim.hired(s, o.k) ? Sim.staffInfo(s, o.k) : null;
+          head = `📨 ${o.name} quer ser ${f.icon} ${f.name}`;
+          text = `Nível <b>${o.level}</b> · desempenho ${'⭐'.repeat(Sim.starsOf(o.perf))}${'☆'.repeat(5 - Sim.starsOf(o.perf))} · pede <b>${M(sal)}/mês</b>.${cur ? ` Hoje essa vaga é de alguém de nível ${cur.level}, ${'⭐'.repeat(Sim.starsOf(cur.perf))}${'☆'.repeat(5 - Sim.starsOf(cur.perf))}, ganhando ${M(cur.salary)}/mês. Aceitar troca as duas pessoas.` : ' A vaga está livre.'}`;
+          btns = `<button class="btn" data-offer="1" ${s.cash < sal ? 'disabled' : ''}>${cur ? 'Trocar' : 'Contratar'}</button><button class="btn sec" data-offer="0">Recusar</button>`;
+        }
       } else {
         head = '🗳️ Decisão política'; text = p.obj.text;
         btns = p.obj.options.map((o, i) => `<button class="btn ${i === 0 ? '' : 'sec'}" data-dil="${i}">${o.label}</button>`).join('');
@@ -266,6 +279,7 @@
       ${Sim.foreignDebt(s) ? `<div class="row"><span>🌍 Dívida com outros países</span><b class="neg">${M(Sim.foreignDebt(s))}</b></div>` : ''}
       ${Sim.lentValue(s) ? `<div class="row"><span>🤝 A receber dos vizinhos</span><b class="pos">${M(Sim.lentValue(s))}</b></div>` : ''}
       ${s.report && s.report.exports > 0 ? `<div class="row"><span>📜 Exportações (tratados)</span><b class="pos">${sign(s.report.exports)}</b></div>` : ''}
+      ${s.report && s.report.colonies > 0 ? `<div class="row"><span>🏙️ Cidades no exterior</span><b class="pos">${sign(s.report.colonies)}</b></div>` : ''}
       ${s.report && s.report.dividends > 0 ? `<div class="row"><span>💵 Dividendos no último mês</span><b class="pos">${sign(s.report.dividends)}</b></div>` : ''}
       <div class="row"><span>Ganho por mês</span><b class="${cls(net)}">${sign(net)}</b></div></div>
     ${(() => { const pc = Sim.publicCosts(s); return pc.rows.length ? `<div class="card"><h3>🏛️ Gastos públicos</h3><div class="big neg">-${M(Math.round(pc.total))}</div><div class="mut" style="text-align:center">por mês com serviços do governo</div>
@@ -297,17 +311,21 @@
     if (on) {
       const inf = Sim.staffInfo(s, k), auto = Sim.active(s, k), ef = effText(inf.efficiency);
       sub = `Nível ${inf.level}/${Sim.MAX_LEVEL} · ${M(inf.salary)} por mês`;
+      const stars = Sim.starsOf(inf.perf), perfLine = inf.perfWarn
+        ? `<div class="supline bad">😴 <b>Não está rendendo bem</b> (desempenho ${Math.round(inf.perf * 100)}%): rende menos e erra mais.</div>`
+        : `<div class="mut" style="font-size:13px;margin-top:8px">Desempenho: ${'⭐'.repeat(stars)}${'☆'.repeat(5 - stars)}</div>`;
+      const bonus = inf.perf < 1 ? `<div class="btns"><button class="btn ${inf.perfWarn ? '' : 'sec'}" data-motivate="${k}" ${s.cash < inf.motivateCost ? 'disabled' : ''}>💵 Dar um bônus<small>${M(inf.motivateCost)} · volta a render melhor</small></button></div>` : '';
       const tr = inf.training;
       const train = inf.nextCost == null
         ? '<button class="btn sec" disabled>⭐ Nível máximo</button>'
         : tr ? `<div class="training"><div class="effhead">🎓 Treinando para o nível ${tr.to}…</div><i><b style="width:${Math.round((1 - tr.left / tr.total) * 100)}%;background:var(--acc)"></b></i><small class="mut">faltam ${tr.left} ${tr.left === 1 ? 'mês' : 'meses'} · enquanto isso ele continua no nível ${inf.level}</small></div>`
         : `<button class="btn" data-upgrade="${k}" ${s.cash < inf.nextCost ? 'disabled' : ''}>🎓 Treinar para o nível ${inf.level + 1}<small>${M(inf.nextCost)} agora · leva ${inf.trainMonths} meses · salário vira ${M(inf.nextSalary)}/mês</small></button>`;
-      body = `<div class="eff"><div class="effhead"><span>${ef[0]} ${ef[1]}</span></div>
+      body = `${perfLine}<div class="eff"><div class="effhead"><span>${ef[0]} ${ef[1]}</span></div>
           <i><b style="width:${Math.round(inf.efficiency * 100)}%;background:${ef[2]}"></b></i>
           <div class="mut" style="font-size:12px">Aguenta uma cidade de até ${inf.capacity.toLocaleString('pt-BR')} habitantes (a sua tem ${Math.floor(s.pop).toLocaleString('pt-BR')}).</div></div>
         <div class="skills">${inf.skills.map(k2 => `<div class="${k2.on ? 'on' : 'off'}">${k2.on ? '✅' : '🔒 Nível ' + k2.lvl + ':'} ${k2.text}</div>`).join('')}</div>
         <div class="perks">${inf.lines.map(l => `<span>${l}</span>`).join('')}${inf.teamBonus > 1 ? `<span class="okchip">🔗 Time completo +${Math.round((inf.teamBonus - 1) * 100)}%</span>` : ''}<span class="warnchip">😅 Erra em ~${Math.round(inf.errorChance * 100)}% das decisões</span></div>
-        <div class="btns">${train}</div>
+        <div class="btns">${train}</div>${bonus}
         <div class="btns"><button class="btn ${auto ? '' : 'sec'}" data-auto="${k}">${auto ? '🤖 Decisões automáticas: LIGADAS' : '🤖 Decisões automáticas: DESLIGADAS'}</button>
         <button class="btn red" data-fire="${k}" style="flex:0 0 auto">Demitir</button></div>`;
     } else {
@@ -317,9 +335,10 @@
         ${warns.map(w => `<div class="supline bad">⚠️ ${w}</div>`).join('')}
         <div class="btns"><button class="btn ${warn ? 'red' : ''}" data-hire="${k}" ${s.cash < Math.round(f.salary * Sim.FLOW) ? 'disabled' : ''}>${warn ? 'Contratar mesmo assim' : 'Contratar'} · ${M(Math.round(f.salary * Sim.FLOW))}/mês</button></div>`;
     }
-    return `<div class="card asset"><div class="top"><span class="ico">${f.icon}</span>
+    const bad = on && Sim.staffInfo(s, k).perfWarn;
+    return `<div class="card asset ${bad ? 'bad' : ''}"><div class="top"><span class="ico">${f.icon}</span>
       <div class="nm">${f.name}<small>${sub}</small></div>
-      <div class="val">${on ? '✅' : ''}</div></div>
+      <div class="val">${on ? (bad ? '😴' : '✅') : ''}</div></div>
       <div class="mut" style="margin-top:8px;font-size:14px">${f.desc}</div>${body}</div>`;
   }
 
@@ -333,7 +352,10 @@
     const names = Sim.STAFF_ORDER.map(k => Sim.STAFF[k].name);
     const mine = s.log.filter(l => (l.includes('😅') || names.some(n => l.includes(n))) && !/Agora você pode/.test(l)).slice(0, 8);
     const logHtml = mine.length ? mine.map(l => `<div class="logline">${l}</div>`).join('') : '<div class="mut">Ainda não fizeram nada.</div>';
-    return `<div class="card staffnote"><h3>📋 Quem contratar?</h3><div class="mut" style="font-size:14px">Ninguém manda em ninguém: todos são iguais. A diferença é o retorno de cada cargo. Um investidor ou analista rende bem mais que quem cuida do meio ambiente; um profissional de relações internacionais rende mais que o da energia. <b>Pesquise o que cada um faz</b> e contrate com critério: contratar errado só gera custo e erros.</div></div><div class="card"><h3>👔 Folha de pagamento (${count} de 15)</h3><div class="big ${cost ? 'neg' : ''}">${cost ? '-' : ''}${M(cost)}</div>
+    const probs = Sim.STAFF_ORDER.filter(k => Sim.hired(s, k) && Sim.staffInfo(s, k).perfWarn);
+    const summary = count ? `<div class="card ${probs.length ? 'staffnote' : ''}"><h3>👥 Sua equipe: ${count} ${count === 1 ? 'pessoa' : 'pessoas'}</h3>${probs.length ? `<div class="neg"><b>😴 ${probs.map(k => Sim.STAFF[k].name).join(', ')}</b> ${probs.length === 1 ? 'não está rendendo bem' : 'não estão rendendo bem'}. Dê um bônus ou demita.</div>` : '<div class="mut">Todos rendendo bem. O desempenho cai devagar com o tempo, fique de olho.</div>'}</div>` : '';
+    const o = s.offer, offerCard = o ? `<div class="card staffnote"><h3>📨 ${o.kind === 'poach' ? 'Proposta da concorrência' : 'Candidato esperando'}</h3>${o.kind === 'poach' ? `${Sim.STAFF[o.k].name} quer sair por uma oferta melhor.` : `${o.name} quer a vaga de ${Sim.STAFF[o.k].name}.`} Responda na janela de baixo (faltam ${o.left} ${o.left === 1 ? 'mês' : 'meses'}).</div>` : '';
+    return `${offerCard}${summary}<div class="card staffnote"><h3>📋 Quem contratar?</h3><div class="mut" style="font-size:14px">Ninguém manda em ninguém: todos são iguais. A diferença é o retorno de cada cargo. Um investidor ou analista rende bem mais que quem cuida do meio ambiente; um profissional de relações internacionais rende mais que o da energia. <b>Pesquise o que cada um faz</b> e contrate com critério: contratar errado só gera custo e erros.</div></div><div class="card"><h3>👔 Folha de pagamento (${count} de 15)</h3><div class="big ${cost ? 'neg' : ''}">${cost ? '-' : ''}${M(cost)}</div>
       <div class="mut" style="text-align:center">por mês</div></div>
       <div class="mut" style="font-size:14px;margin-bottom:12px">Cada pessoa é boa em uma coisa. Todas estão liberadas, mas cada uma só ajuda no momento e na ordem certos. Quanto mais gente da mesma área, maior o bônus de time completo, e quanto maior a equipe, mais cara a folha. Quanto maior a cidade, mais trabalho: treine quem ficar sobrecarregado.</div>
       ${areas}
@@ -376,14 +398,24 @@
         <div class="btns">
           <button class="btn" data-fborrow="${n.key}" ${i.rel < 40 || ask < 500 ? 'disabled' : ''}>🏦 Pedir ${M(Math.max(0, ask))}<small>${i.rel < 40 ? 'eles não confiam em você' : 'juros de ' + (i.rate * 100).toFixed(1).replace('.', ',') + '% ao mês'}</small></button>
           ${i.owed > 0 ? `<button class="btn sec" data-frepay="${n.key}">💸 Pagar dívida</button>` : ''}
-        </div></div>`;
+        </div>
+        ${(() => { const c = Sim.colonyInfo(s, n.key); return c.owned ? '<div class="perks"><span class="okchip">🏙️ Você tem uma cidade aqui</span></div>' : `<div class="btns"><button class="btn sec" data-cbuy="${n.key}" ${!c.canBuy || s.cash < c.price ? 'disabled' : ''}>🏙️ Comprar uma cidade aqui · ${M(c.price)}<small>${c.why ? c.why : `renderia ~${M(c.preview)}/mês no início, cresce com investimento`}</small></button></div>`; })()}
+      </div>`;
     }).join('');
+    const cityRows = Sim.NEIGHBORS.map(n => Sim.colonyInfo(s, n.key));
+    const mine = cityRows.filter(i => i.owned), colNet = mine.reduce((t, i) => t + i.net, 0);
+    const myCities = mine.length ? `<div class="card"><h3>🏙️ Minhas cidades no exterior (${mine.length})</h3><div class="big pos">+${M(Math.round(colNet))}</div><div class="mut" style="text-align:center">por mês, já no seu caixa</div>
+      ${mine.map(i => `<div class="colony ${i.danger ? 'danger' : ''}"><div class="top"><span class="ico">${i.icon}</span><div class="nm">${i.name}<small>Nível ${i.level}/${Sim.COL_MAX} · ${i.pop.toLocaleString('pt-BR')} habitantes</small></div><div class="val pos">+${M(Math.round(i.net))}<small>por mês</small></div></div>
+        ${i.danger ? `<div class="supline bad">⚠️ A relação com ${i.name} está ruim${i.trouble ? ` (${i.trouble}/5 meses de risco)` : ''}: a renda caiu e eles podem tomar a cidade. Mande presentes!</div>` : ''}
+        ${i.upgrading ? `<div class="training"><div class="effhead">🏗️ Crescendo para o nível ${i.upgrading.to}…</div><i><b style="width:${Math.round((1 - i.upgrading.left / i.upgrading.total) * 100)}%;background:var(--acc)"></b></i><small class="mut">faltam ${i.upgrading.left} meses</small></div>` : ''}
+        <div class="btns">${i.upCost == null ? '<button class="btn sec" disabled>⭐ Nível máximo</button>' : `<button class="btn" data-cup="${i.key}" ${i.upgrading || s.cash < i.upCost ? 'disabled' : ''}>🏗️ Investir na cidade<small>${M(i.upCost)} · leva ${i.upMonths} meses · mais renda e gente</small></button>`}
+        <button class="btn sec" data-csell="${i.key}" style="flex:0 0 auto">Vender<small>${M(i.sellValue)}</small></button></div></div>`).join('')}</div>` : '';
     const lent = w.lent.length ? `<div class="card"><h3>🤝 Empréstimos que você fez</h3>${w.lent.map(l => {
       const n = Sim.NEIGHBORS.find(x => x.key === l.who);
       return `<div class="row"><span>${n.icon} ${n.name}</span><span>${l.left}x de ${M(l.monthly)}</span></div>`;
     }).join('')}</div>` : '';
     const news = w.news.slice(0, 6).map(l => `<div class="logline">${l}</div>`).join('') || '<div class="mut">Nada de novo pelo mundo.</div>';
-    return `${top}<div class="card"><h3>🌍 Seu lugar no mundo</h3>
+    return `${top}${myCities}<div class="card"><h3>🌍 Seu lugar no mundo</h3>
       <div class="mut">Os outros países mexem um pouco com o seu comércio. Hoje isso muda suas empresas em <b class="${cls(f - 1)}">${(f - 1 >= 0 ? '+' : '') + ((f - 1) * 100).toFixed(1).replace('.', ',')}%</b>.</div></div>
       <div class="assets">${cards}</div>${lent}
       <div class="card"><h3>📰 Notícias do mundo</h3>${news}</div>`;
@@ -397,7 +429,7 @@
 
   function render() {
     header();
-    document.querySelectorAll('#tabs button').forEach(b => { b.classList.toggle('on', b.dataset.tab === tab); if (b.dataset.tab === 'world') b.classList.toggle('alert', !!(s.world.request || s.world.dilemma) && !propRef); });
+    document.querySelectorAll('#tabs button').forEach(b => { b.classList.toggle('on', b.dataset.tab === tab); if (b.dataset.tab === 'world') b.classList.toggle('alert', !!(s.world.request || s.world.dilemma) && !propRef); if (b.dataset.tab === 'team') b.classList.toggle('alert', Sim.STAFF_ORDER.some(k => Sim.hired(s, k) && Sim.staffInfo(s, k).perfWarn) || !!(s.offer && !propRef)); });
     if (tab === 'map' && $('map3d')) { renderProp(); if (window.City3D) City3D.show(s); return; }
     const keep = $('view').scrollTop;
     $('view').innerHTML = {city: viewCity, map: viewMap, invest: viewInvest, fin: viewFin, world: viewWorld, team: viewTeam, news: viewNews}[tab]();
@@ -444,6 +476,11 @@
     else if (d.untreaty) { if (!confirm('Cancelar o tratado? A relação piora.')) return; r = Sim.cancelTreaty(s, d.untreaty); }
     else if (d.fborrow) { r = Sim.borrowForeign(s, d.fborrow, Math.min(5000, Sim.foreignLimit(s, d.fborrow))); if (r.ok) toast('🏦 Empréstimo recebido!'); }
     else if (d.frepay) r = Sim.repayForeign(s, d.frepay, Sim.worldInfo(s, d.frepay).owed);
+    else if (d.motivate) { r = Sim.motivate(s, d.motivate); if (r.ok) toast('💵 Bônus pago!'); }
+    else if (d.offer != null) { r = Sim.answerOffer(s, d.offer === '1'); }
+    else if (d.cbuy) { r = Sim.buyColony(s, d.cbuy); if (r.ok) toast('🏙️ Cidade comprada!'); }
+    else if (d.cup) { r = Sim.upgradeColony(s, d.cup); if (r.ok) toast('🏗️ Obras começaram: ' + r.months + ' meses.'); }
+    else if (d.csell) { if (!confirm('Vender essa cidade?')) return; r = Sim.sellColony(s, d.csell); if (r.ok) toast('Cidade vendida.'); }
     else if (d.req != null) { r = Sim.answerRequest(s, d.req === '1'); }
     else if (d.dil != null) { r = Sim.answerDilemma(s, +d.dil); }
     else if (d.loan) r = Sim.borrow(s, +d.loan);

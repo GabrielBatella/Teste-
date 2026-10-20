@@ -226,7 +226,7 @@
     ASSETS.forEach(a => { assets[a.key] = newAsset(); });
     return {
       v: 1, seed: seed == null ? (Date.now() | 0) : seed, month: 0, cash: 10000, debt: 0, taxRate: 10,
-      tiles, lv: [], hist: [], histN: 0, landBought: 0, pop: 20, happy: 55, assets, mods: {econ: 1, econLeft: 0, upkeep: 1, upkeepLeft: 0},
+      tiles, lv: [], hist: [], histN: 0, colonies: {}, offer: null, landBought: 0, pop: 20, happy: 55, assets, mods: {econ: 1, econLeft: 0, upkeep: 1, upkeepLeft: 0},
       log: ['Bem-vindo, prefeito! Cuide da cidade e faça o dinheiro render.'],
       report: null, over: null, staff: defaultStaff(), staffSeen: {}, staffStats: {errors: 0, cost: 0},
       market: {rate: BASE_RATE, prev: BASE_RATE}, world: newWorld(), lowHappy: 0, netHist: [10000],
@@ -242,7 +242,9 @@
   const active = (s, k) => hired(s, k) && s.staff[k].auto;
   const levelOf = (s, k) => hired(s, k) ? (s.staff[k].level || 1) : 0;
   const salaryAt = (k, lvl) => Math.round(STAFF[k].salary * SALARY_MULT[lvl - 1] * FLOW);
-  const salaryOf = (s, k) => hired(s, k) ? salaryAt(k, levelOf(s, k)) : 0;
+  const salaryOf = (s, k) => hired(s, k) ? Math.round(salaryAt(k, levelOf(s, k)) * (s.staff[k].raise || 1)) : 0;
+  const PERF_MIN = 0.3, PERF_MAX = 1.3, PERF_WARN = 0.75;
+  const perfOf = (s, k) => hired(s, k) ? (s.staff[k].perf == null ? 1 : s.staff[k].perf) : 0;
   // Custo de coordenação: quanto maior a equipe, mais cara a folha (+2,5% por pessoa a mais)
   function staffCost(s) {
     const n = STAFF_ORDER.filter(k => hired(s, k)).length;
@@ -269,10 +271,10 @@
   // "Nível efetivo": nível × eficiência × bônus de time (é o que vira efeito no jogo)
   // Retorno decrescente: o nível 8 não rende 8 vezes o nível 1 (freia o efeito bola de neve)
   const LV_POW = 0.9, TEAM_BONUS = 0.03;
-  const pw = (s, k) => hired(s, k) ? Math.pow(levelOf(s, k), LV_POW) * efficiency(s, k) * teamBonus(s, k) : 0;
+  const pw = (s, k) => hired(s, k) ? Math.pow(levelOf(s, k), LV_POW) * efficiency(s, k) * teamBonus(s, k) * perfOf(s, k) : 0;
   const lv = (s, k) => levelOf(s, k);
   // Chance de errar: 30% normalmente, mais se estiver sobrecarregado, menos com Auditor
-  const errorChance = (s, k) => clamp(ERROR_BASE + 0.25 * (1 - efficiency(s, k)) - 0.03 * lv(s, 'auditor'), 0.08, 0.6);
+  const errorChance = (s, k) => clamp(ERROR_BASE + 0.25 * (1 - efficiency(s, k)) + 0.4 * Math.max(0, 1 - perfOf(s, k)) - 0.03 * lv(s, 'auditor'), 0.08, 0.6);
 
   const loanLimit = s => LOAN_LIMIT + 5000 * lv(s, 'tesoureiro');
   const loanRate = s => LOAN_RATE - (hired(s, 'gerente') ? 0.003 + 0.001 * pw(s, 'gerente') : 0) - 0.0008 * pw(s, 'tesoureiro');
@@ -323,9 +325,143 @@
     STAFF_ORDER.forEach(k => {
       const e = s.staff[k], tr = e && e.hired && e.training;
       if (!tr) return;
-      if (--tr.left <= 0) { e.level = tr.to; e.training = null; note(s, `🎓 ${STAFF[k].name} terminou o treinamento e chegou ao nível ${e.level}!`); }
+      if (--tr.left <= 0) { e.level = tr.to; e.training = null; e.perf = Math.min(PERF_MAX, (e.perf == null ? 1 : e.perf) + 0.15); note(s, `🎓 ${STAFF[k].name} terminou o treinamento e chegou ao nível ${e.level}!`); }
     });
   }
+  // ---------- Pessoal: desempenho cai com o tempo, bônus, candidatos e propostas da concorrência ----------
+  const motivateCost = (s, k) => Math.round(salaryOf(s, k) * 3);
+  function motivate(s, k) {
+    if (s.over) return {ok: false, msg: 'O jogo acabou.'};
+    if (!hired(s, k)) return {ok: false, msg: 'Não está contratado.'};
+    if (perfOf(s, k) >= 1) return {ok: false, msg: 'Já está motivado.'};
+    const cost = motivateCost(s, k);
+    if (s.cash < cost) return {ok: false, msg: 'Dinheiro insuficiente para o bônus.'};
+    s.cash -= cost; s.staff[k].perf = Math.min(1.1, perfOf(s, k) + 0.45); s.staff[k].warned = false;
+    note(s, `💵 ${STAFF[k].name} recebeu um bônus e voltou a render melhor.`);
+    return {ok: true, cost};
+  }
+  function perfStep(s) {
+    STAFF_ORDER.forEach(k => {
+      const e = s.staff[k]; if (!e || !e.hired) return;
+      let p = (e.perf == null ? 1 : e.perf) + (staffRand(s) - 0.5) * 0.03 - 0.003;       // cansaço devagar
+      if (staffRand(s) < 0.008) p -= 0.25;                                                 // às vezes desanima de vez
+      e.perf = clamp(p, PERF_MIN, PERF_MAX);
+      if (e.perf < PERF_WARN && !e.warned) { e.warned = true; note(s, `😴 ${STAFF[k].name} não está rendendo bem. Dê um bônus ou troque a pessoa.`); }
+      if (e.perf >= PERF_WARN + 0.1) e.warned = false;
+    });
+  }
+  const CAND_NAMES = ['Marina', 'Rafael', 'Beatriz', 'Lucas', 'Camila', 'Thiago', 'Juliana', 'Felipe', 'Larissa', 'Bruno', 'Aline', 'Diego', 'Patrícia', 'Gustavo', 'Renata', 'André', 'Carla', 'Rodrigo', 'Fernanda', 'Henrique'];
+  const starsOf = perf => clamp(Math.round((perf - 0.45) / 0.18), 1, 5);
+  function offerStep(s) {
+    if (s.offer) { s.offer.left--; if (s.offer.left <= 0) expireOffer(s); return; }
+    if (s.month < 6 || staffRand(s) >= 0.05) return;
+    const hiredList = STAFF_ORDER.filter(k => hired(s, k));
+    const poachable = hiredList.filter(k => levelOf(s, k) >= 3 && perfOf(s, k) >= 0.9);
+    if (poachable.length && staffRand(s) < 0.35) {
+      const k = poachable[Math.floor(staffRand(s) * poachable.length)];
+      s.offer = {kind: 'poach', k, name: CAND_NAMES[Math.floor(staffRand(s) * CAND_NAMES.length)], left: 5, total: 5};
+      note(s, `📨 Outra empresa quer levar ${STAFF[k].name}.`);
+      return;
+    }
+    const k = STAFF_ORDER[Math.floor(staffRand(s) * STAFF_ORDER.length)];
+    const cur = levelOf(s, k), top = Math.min(MAX_LEVEL, 1 + Math.floor(s.pop / 1500) + (cur ? 1 : 0));
+    const level = cur ? Math.min(MAX_LEVEL, cur + Math.floor(staffRand(s) * 3)) : 1 + Math.floor(staffRand(s) * top);
+    const perf = Math.round((0.7 + staffRand(s) * 0.65) * 100) / 100, mult = Math.round((0.8 + 0.55 * (perf - 0.7) / 0.65 + (staffRand(s) - 0.5) * 0.3) * 100) / 100;
+    if (cur && perf <= perfOf(s, k) + 0.05 && level <= cur) return;                // só vale a pena oferecer se for melhor
+    s.offer = {kind: 'cand', k, level, perf, mult, name: CAND_NAMES[Math.floor(staffRand(s) * CAND_NAMES.length)], replace: cur > 0, left: 4, total: 4};
+    note(s, `📨 ${s.offer.name} quer ser ${STAFF[k].name}${cur ? ' (no lugar de quem já está)' : ''}.`);
+  }
+  function expireOffer(s) {
+    const o = s.offer; s.offer = null;
+    if (o.kind === 'poach' && hired(s, o.k)) { s.staff[o.k] = {hired: false, auto: true, level: 1}; note(s, `🚪 ${STAFF[o.k].name} aceitou a proposta da concorrência e saiu.`); }
+  }
+  function offerSalary(s, o) { return Math.round(salaryAt(o.k, o.level) * o.mult); }
+  function answerOffer(s, accept) {
+    const o = s.offer;
+    if (!o) return {ok: false, msg: 'Nenhuma proposta.'};
+    if (o.kind === 'cand') {
+      if (!accept) { s.offer = null; return {ok: true}; }
+      if (s.cash < offerSalary(s, o)) return {ok: false, msg: 'Dinheiro insuficiente para o 1º salário.'};
+      s.staff[o.k] = {hired: true, auto: true, level: o.level, perf: o.perf, raise: o.mult};
+      note(s, `🤝 ${o.name} foi contratado como ${STAFF[o.k].name} (nível ${o.level}).`);
+      s.offer = null; return {ok: true};
+    }
+    if (!accept) { expireOffer(s); return {ok: true}; }
+    const e = s.staff[o.k];
+    if (e && e.hired) { e.raise = Math.round((e.raise || 1) * 1.3 * 100) / 100; e.perf = Math.min(PERF_MAX, perfOf(s, o.k) + 0.1); note(s, `💼 ${STAFF[o.k].name} ficou, com aumento de 30%.`); }
+    s.offer = null; return {ok: true};
+  }
+
+  // ---------- Cidades em outros países: filiais que rendem todo mês ----------
+  const COLONY_MIN_POP = 2000, COLONY_MIN_REL = 55, COL_MAX = 10;
+  const colonyScaleNow = s => Math.max(25000, 0.06 * Math.max(0, netWorth(s)));
+  function colonyPrice(s, key) { return Math.round(colonyScaleNow(s) * (0.5 + nb(key).wealth / 60000) * clamp(s.world.econ[key], 0.7, 1.3) / 1000) * 1000; }
+  const colonyPop = c => Math.round(3000 * Math.pow(c.scale / 25000, 0.35) * Math.pow(c.level, 1.4));
+  const colonyUpCost = c => Math.round(c.scale * 0.10 * Math.pow(1.25, c.level - 1));
+  const colonyUpMonths = c => 4 + 2 * c.level;
+  function colonyNet(s, c) {
+    const w = s.world, rel = w.rel[c.key], relF = rel >= 45 ? 1 : rel >= 30 ? 0.7 : 0.4;
+    return c.scale * (0.004 + 0.0025 * (c.level - 1)) * clamp(w.econ[c.key], 0.6, 1.4) * relF * (w.treaty[c.key] ? 1.1 : 1);
+  }
+  const colonyValue = c => (c.cost + c.invested) * 0.8;
+  const coloniesList = s => Object.values(s.colonies || {});
+  function colonyInfo(s, key) {
+    const c = (s.colonies || {})[key], w = s.world, n = nb(key), rel = w.rel[key];
+    const base = {key, name: n.name, icon: n.icon, rel, econ: w.econ[key], owned: !!c};
+    if (!c) {
+      const price = colonyPrice(s, key);
+      const why = s.pop < COLONY_MIN_POP ? `sua cidade precisa de ${COLONY_MIN_POP.toLocaleString('pt-BR')} habitantes` : rel < COLONY_MIN_REL ? `relação precisa passar de ${COLONY_MIN_REL}` : null;
+      return {...base, price, canBuy: !why, why, preview: Math.round(colonyScaleNow(s) * 0.004 * clamp(w.econ[key], 0.6, 1.4))};
+    }
+    return {...base, level: c.level, pop: colonyPop(c), net: colonyNet(s, c), upCost: c.level < COL_MAX ? colonyUpCost(c) : null, upMonths: colonyUpMonths(c), upgrading: c.up ? {...c.up} : null,
+      sellValue: Math.round(colonyValue(c) * 0.9), danger: rel < 35, trouble: c.bad || 0, invested: c.invested};
+  }
+  function buyColony(s, key) {
+    if (s.over) return {ok: false, msg: 'O jogo acabou.'};
+    if (!nb(key)) return {ok: false, msg: 'País inválido.'};
+    if (!s.colonies) s.colonies = {};
+    if (s.colonies[key]) return {ok: false, msg: 'Você já tem uma cidade lá.'};
+    const i = colonyInfo(s, key);
+    if (!i.canBuy) return {ok: false, msg: 'Ainda não: ' + i.why + '.'};
+    if (s.cash < i.price) return {ok: false, msg: 'Dinheiro insuficiente.'};
+    s.cash -= i.price;
+    s.colonies[key] = {key, scale: colonyScaleNow(s), level: 1, cost: i.price, invested: 0, since: s.month, up: null, bad: 0};
+    addRel(s, key, 3);
+    note(s, `🏙️ Você comprou uma cidade em ${nb(key).name}!`);
+    return {ok: true, price: i.price};
+  }
+  function upgradeColony(s, key) {
+    const c = (s.colonies || {})[key];
+    if (!c) return {ok: false, msg: 'Você não tem cidade lá.'};
+    if (c.up) return {ok: false, msg: 'Já está em obras.'};
+    if (c.level >= COL_MAX) return {ok: false, msg: 'Já está no nível máximo.'};
+    const cost = colonyUpCost(c);
+    if (s.cash < cost) return {ok: false, msg: 'Dinheiro insuficiente.'};
+    s.cash -= cost; c.invested += cost; c.up = {to: c.level + 1, left: colonyUpMonths(c), total: colonyUpMonths(c)};
+    return {ok: true, cost, months: c.up.total};
+  }
+  function sellColony(s, key) {
+    const c = (s.colonies || {})[key];
+    if (!c) return {ok: false, msg: 'Você não tem cidade lá.'};
+    const v = Math.round(colonyValue(c) * 0.9); s.cash += v; delete s.colonies[key];
+    note(s, `🏙️ Você vendeu a cidade de ${nb(key).name} por ${money(v)}.`);
+    return {ok: true, value: v};
+  }
+  // Renda mensal das filiais; relação muito ruim com o país põe a cidade em risco
+  function colonyStep(s) {
+    let net = 0;
+    coloniesList(s).forEach(c => {
+      if (c.up && --c.up.left <= 0) { c.level = c.up.to; c.up = null; note(s, `🏗️ A cidade de ${nb(c.key).name} chegou ao nível ${c.level}!`); }
+      net += colonyNet(s, c);
+      if (s.world.rel[c.key] < 25) {
+        c.bad = (c.bad || 0) + 1;
+        if (c.bad === 1) worldNote(s, `⚠️ ${nb(c.key).name} está furioso: sua cidade lá corre risco de ser tomada!`);
+        if (c.bad >= 5) { delete s.colonies[c.key]; worldNote(s, `🚫 ${nb(c.key).name} tomou a sua cidade! Você perdeu o investimento.`); }
+      } else c.bad = 0;
+    });
+    s.colonyNet = net; s.cash += net;
+  }
+
   const pct = v => Math.round(v * 100) + '%';
   const rate2 = v => (v * 100).toFixed(2).replace('.', ',') + '%';
   // Resumo para a interface
@@ -350,6 +486,7 @@
     }
     const skills = (SKILLS[k] || []).map(([lvl, text]) => ({lvl, text, on: L >= lvl}));
     return {level: L, skills, salary: salaryOf(s, k), efficiency: efficiency(s, k), capacity: capacityOf(s, k), errorChance: errorChance(s, k),
+      perf: perfOf(s, k), perfWarn: hired(s, k) && perfOf(s, k) < PERF_WARN, motivateCost: hired(s, k) ? motivateCost(s, k) : 0, raise: hired(s, k) ? (s.staff[k].raise || 1) : 1,
       training: hired(s, k) && s.staff[k].training ? {...s.staff[k].training} : null, trainMonths: trainMonths(L),
       teamBonus: teamBonus(s, k), lines, nextCost: upgradeCost(s, k), nextSalary: L < MAX_LEVEL ? salaryAt(k, L + 1) : null};
   }
@@ -360,7 +497,7 @@
     const why = lockReason(s, k);
     if (why) return {ok: false, msg: why + '.'};
     if (s.cash < STAFF[k].salary) return {ok: false, msg: 'Dinheiro insuficiente para o 1º salário.'};
-    s.staff[k] = {hired: true, auto: true, level: 1};
+    s.staff[k] = {hired: true, auto: true, level: 1, perf: 1};
     return {ok: true, warnings: hireWarnings(s, k)};
   }
   function fire(s, k) {
@@ -524,7 +661,7 @@
   }
   const foreignDebt = s => NEIGHBORS.reduce((t, n) => t + (s.world.owed[n.key] || 0), 0);
   const lentValue = s => s.world.lent.reduce((t, l) => t + l.left * l.monthly, 0);
-  function netWorth(s) { return s.cash + holdingsValue(s) + buildingsValue(s) + lentValue(s) * 0.8 - s.debt - foreignDebt(s); }
+  function netWorth(s) { return s.cash + holdingsValue(s) + buildingsValue(s) + lentValue(s) * 0.8 - s.debt - foreignDebt(s) + coloniesList(s).reduce((t, c) => t + colonyValue(c), 0); }
 
   // Preço de uma obra: o Arquiteto consegue desconto para toda a cidade
   const buildCost = (s, type) => Math.round(BUILDINGS[type].cost * (1 - buildDiscount(s)) * priceF(s));
@@ -938,7 +1075,7 @@
       for (let i = 0; i < EVENTS.length; i++) { if ((r -= ws[i]) < 0) { EVENTS[i].run(s); break; } }
     }
     worldStep(s);
-    trainingStep(s);
+    trainingStep(s); perfStep(s); offerStep(s); colonyStep(s);
 
     staffActs(s, s.month % 2 === 1);   // a equipe decide a cada 2 meses (só emergências todo mês)
 
@@ -955,7 +1092,7 @@
       }
     }
 
-    s.report = {taxes, rent, commerce, industry, exports, cashYield, dividends, income, maint, basic, salaries, diplomacy, interest, overdraft, expenses, net: income + dividends - expenses};
+    s.report = {taxes, rent, commerce, industry, exports, cashYield, dividends, income, maint, basic, salaries, diplomacy, interest, overdraft, expenses, colonies: s.colonyNet || 0, net: income + dividends + (s.colonyNet || 0) - expenses};
     s.netHist.push(netWorth(s)); if (s.netHist.length > 48) s.netHist.shift();
 
 
@@ -1318,6 +1455,8 @@
       NEIGHBORS.forEach(n => { const w = s.world; if (w.econ[n.key] == null) { w.econ[n.key] = 1; w.rel[n.key] = 50; w.treaty[n.key] = false; w.owed[n.key] = 0; w.giftCd[n.key] = 0; } });
       if (!s.market) s.market = {rate: BASE_RATE, prev: BASE_RATE};
       if (!s.lv) s.lv = [];
+      if (!s.colonies) s.colonies = {};
+      if (s.offer === undefined) s.offer = null;
       if (!s.hist) s.hist = s.log.map(l => { const m = /^Mês (\d+): (.*)$/.exec(l); return m ? {m: +m[1], t: m[2]} : {m: s.month, t: l}; });
       if (s.histN == null) s.histN = 0;
       return s;
@@ -1325,7 +1464,7 @@
   }
 
   return {COLS, ROWS: START_ROWS, HALL, BUILDINGS, ASSETS, SAFE_ASSETS, RISKY_ASSETS, FIXED_ASSETS, BASE_RATE, assetYield, STAFF, STAFF_ORDER, SALARY_ORDER, AREAS, MAX_LEVEL, NEIGHBORS,
-    hired, active, levelOf, isUnlocked, lockReason, readiness, hireWarnings, DIFFICULTY, COST_HARD, EVENT_HARD, PUBLIC_ESC, isPublic, upkeepInfo, publicCosts, pressure, priceF, sizeF, phaseOf, PHASES, staffCost, salaryOf, efficiency, errorChance, staffInfo, upgrade, train, trainMonths, upgradeCost, teamBonus,
+    hired, active, levelOf, isUnlocked, lockReason, readiness, hireWarnings, DIFFICULTY, COST_HARD, EVENT_HARD, PUBLIC_ESC, isPublic, upkeepInfo, publicCosts, pressure, priceF, sizeF, phaseOf, PHASES, staffCost, salaryOf, efficiency, errorChance, staffInfo, upgrade, train, trainMonths, motivate, answerOffer, offerSalary, starsOf, PERF_WARN, colonyInfo, buyColony, upgradeColony, sellColony, coloniesList, COLONY_MIN_POP, COLONY_MIN_REL, COL_MAX, upgradeCost, teamBonus,
     loanRate, loanLimit, hire, fire, setAuto, recommend, recCity, recInfra, recGreen, recSocial, needs, advice, hint,
     picks: {city: pickCity, infra: pickInfra, green: pickGreen, social: pickSocial, asset: pickAsset, group: bestGroup}, TARGETS, freeTiles, buildCost, SKILLS, LOT_SIZE, GIFT_COST, TREATY_COST, TREATY_UPKEEP, FLOW, WORLD_ASSETS, LOAN_LIMIT, OVERDRAFT_LIMIT,
     worldInfo, worldFactor, gift, signTreaty, cancelTreaty, borrowForeign, repayForeign, answerRequest, answerDilemma, foreignDebt, lentValue, foreignRate, foreignLimit,

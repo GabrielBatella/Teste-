@@ -1380,3 +1380,68 @@ test('demitir durante o treinamento perde o treinamento', () => {
   const s = rica(311); s.cash = 1e6; Sim.hire(s, 'analista'); Sim.train(s, 'analista'); Sim.fire(s, 'analista'); Sim.hire(s, 'analista');
   assert.equal(Sim.staffInfo(s, 'analista').training, null); assert.equal(Sim.levelOf(s, 'analista'), 1);
 });
+
+// ---------- Equipe: desempenho, candidatos e propostas; cidades no exterior ----------
+test('desempenho da equipe cai com o tempo, avisa e o bônus resolve', () => {
+  const s = rica(320); s.cash = 5e6; s.pop = 100; Sim.hire(s, 'analista');
+  assert.equal(Sim.staffInfo(s, 'analista').perf, 1);
+  const pw0 = Sim.staffInfo(s, 'analista').lines.join('');
+  let avisou = false; for (let m = 0; m < 200 && !avisou; m++) { s.cash = 5e6; Sim.step(s); avisou = s.log.some(l => l.includes('não está rendendo bem')); }
+  assert.ok(avisou, 'avisa que a pessoa não está rendendo bem');
+  const i = Sim.staffInfo(s, 'analista'); assert.ok(i.perfWarn && i.perf < Sim.PERF_WARN);
+  const err0 = Sim.errorChance(s, 'analista');
+  const c = s.cash; assert.ok(Sim.motivate(s, 'analista').ok); assert.ok(s.cash < c);
+  assert.ok(Sim.staffInfo(s, 'analista').perf > i.perf + 0.4 && Sim.errorChance(s, 'analista') < err0, 'bônus melhora e erra menos');
+  assert.equal(Sim.motivate(rica(321), 'analista').ok, false);
+});
+
+test('candidatos: contratar com nível e desempenho próprios, ou trocar quem já está', () => {
+  const s = rica(322); s.cash = 1e6; s.pop = 100;
+  s.offer = {kind: 'cand', k: 'analista', level: 3, perf: 1.2, mult: 1.1, name: 'Marina', replace: false, left: 4, total: 4};
+  assert.ok(Sim.offerSalary(s, s.offer) > 0);
+  assert.ok(Sim.answerOffer(s, true).ok);
+  assert.equal(Sim.levelOf(s, 'analista'), 3); assert.equal(Sim.staffInfo(s, 'analista').perf, 1.2); assert.equal(s.offer, null);
+  assert.equal(Sim.staffInfo(s, 'analista').salary, Math.round(Sim.salaryOf(s, 'analista')));
+  s.offer = {kind: 'cand', k: 'analista', level: 5, perf: 1.0, mult: 1, name: 'Rafael', replace: true, left: 4, total: 4};
+  assert.ok(Sim.answerOffer(s, true).ok && Sim.levelOf(s, 'analista') === 5);
+  s.offer = {kind: 'cand', k: 'corretor', level: 2, perf: 1, mult: 1, name: 'X', left: 4, total: 4}; Sim.answerOffer(s, false);
+  assert.equal(Sim.hired(s, 'corretor'), false); assert.equal(s.offer, null);
+});
+
+test('proposta da concorrência: dar aumento segura a pessoa; ignorar faz ela sair', () => {
+  const a = rica(323); a.cash = 1e6; Sim.hire(a, 'analista'); for (let i = 1; i < 4; i++) { a.cash = 1e6; Sim.upgrade(a, 'analista'); }
+  a.offer = {kind: 'poach', k: 'analista', name: 'Z', left: 5, total: 5};
+  const sal = Sim.salaryOf(a, 'analista'); assert.ok(Sim.answerOffer(a, true).ok);
+  assert.ok(Sim.salaryOf(a, 'analista') > sal * 1.25 && Sim.hired(a, 'analista'));
+  const b = rica(324); b.cash = 1e6; Sim.hire(b, 'analista'); b.offer = {kind: 'poach', k: 'analista', name: 'Z', left: 1, total: 5};
+  b.month = 0; Sim.step(b); assert.equal(Sim.hired(b, 'analista'), false, 'foi embora');
+  let viu = false; for (let k = 0; k < 40 && !viu; k++) { const s = rica(330 + k); s.cash = 1e6; s.pop = 3000; Sim.hire(s, 'analista'); for (let m = 0; m < 80 && !viu; m++) { s.cash = 1e6; Sim.step(s); if (s.offer) viu = true; } }
+  assert.ok(viu, 'propostas aparecem sozinhas durante o jogo');
+});
+
+test('cidades no exterior: exigem cidade grande e boa relação, rendem e crescem com investimento', () => {
+  const s = rica(340); s.cash = 5e8; s.pop = 500; s.world.rel.reino = 70;
+  assert.equal(Sim.colonyInfo(s, 'reino').canBuy, false); assert.equal(Sim.buyColony(s, 'reino').ok, false);
+  s.pop = 3000; s.world.rel.reino = 40; assert.equal(Sim.buyColony(s, 'reino').ok, false, 'relação baixa');
+  s.world.rel.reino = 70; const nw0 = Sim.netWorth(s), c0 = s.cash, price = Sim.colonyInfo(s, 'reino').price;
+  assert.ok(Sim.buyColony(s, 'reino').ok); assert.equal(s.cash, c0 - price);
+  assert.ok(Sim.netWorth(s) > nw0 - price, 'a cidade conta no patrimônio');
+  assert.equal(Sim.buyColony(s, 'reino').ok, false, 'uma por país');
+  const i0 = Sim.colonyInfo(s, 'reino'); assert.ok(i0.owned && i0.net > 0 && i0.pop > 0);
+  const cash = s.cash; s.world.rel.reino = 70; s.pop = 3000; Sim.step(s); assert.ok(s.report.colonies > 0 && s.cash > cash - 1e7);
+  const up = Sim.upgradeColony(s, 'reino'); assert.ok(up.ok && up.months > 0);
+  assert.equal(Sim.upgradeColony(s, 'reino').ok, false, 'uma obra por vez');
+  for (let m = 0; m < up.months; m++) { s.world.rel.reino = 70; s.pop = 3000; s.lowHappy = 0; Sim.step(s); }
+  const i1 = Sim.colonyInfo(s, 'reino'); assert.equal(i1.level, 2); assert.ok(i1.net > i0.net && i1.pop > i0.pop);
+  const v = Sim.sellColony(s, 'reino'); assert.ok(v.ok && v.value > 0); assert.equal(Sim.colonyInfo(s, 'reino').owned, false);
+});
+
+test('cidade no exterior é tomada se a relação ficar péssima por meses', () => {
+  const s = rica(341); s.cash = 5e8; s.pop = 3000; s.world.rel.uniao = 70; assert.ok(Sim.buyColony(s, 'uniao').ok);
+  for (let m = 0; m < 8 && Sim.colonyInfo(s, 'uniao').owned; m++) { s.world.rel.uniao = 5; s.cash = 5e8; Sim.step(s); }
+  assert.equal(Sim.colonyInfo(s, 'uniao').owned, false);
+  assert.ok(s.log.some(l => l.includes('tomou a sua cidade')));
+  const t = rica(342); t.cash = 5e8; t.pop = 3000; t.world.rel.uniao = 70; Sim.buyColony(t, 'uniao');
+  t.world.rel.uniao = 20; Sim.step(t); t.world.rel.uniao = 70; for (let m = 0; m < 8; m++) { t.world.rel.uniao = 70; t.cash = 5e8; Sim.step(t); }
+  assert.ok(Sim.colonyInfo(t, 'uniao').owned, 'se a relação melhora, o risco passa');
+});
