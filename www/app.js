@@ -321,6 +321,8 @@
       ${Sim.foreignDebt(s) ? `<div class="row"><span>🌍 Dívida com outros países</span><b class="neg">${M(Sim.foreignDebt(s))}</b></div>` : ''}
       ${Sim.lentValue(s) ? `<div class="row"><span>🤝 A receber dos vizinhos</span><b class="pos">${M(Sim.lentValue(s))}</b></div>` : ''}
       ${s.report && s.report.exports > 0 ? `<div class="row"><span>📜 Exportações (tratados)</span><b class="pos">${sign(s.report.exports)}</b></div>` : ''}
+      ${s.report && s.report.empire > 0 ? `<div class="row"><span>🚀 Império</span><b class="pos">${sign(s.report.empire)}</b></div>` : ''}
+      ${s.report && s.report.empire > 0 ? `<div class="row"><span>🚀 Império</span><b class="pos">${sign(s.report.empire)}</b></div>` : ''}
       ${s.report && s.report.colonies > 0 ? `<div class="row"><span>🏙️ Cidades no exterior</span><b class="pos">${sign(s.report.colonies)}</b></div>` : ''}
       ${s.report && s.report.dividends > 0 ? `<div class="row"><span>💵 Dividendos no último mês</span><b class="pos">${sign(s.report.dividends)}</b></div>` : ''}
       <div class="row"><span>Ganho por mês</span><b class="${cls(net)}">${sign(net)}</b></div></div>
@@ -409,6 +411,17 @@
   // ---------- Mundo ----------
   const fortTag = f => f >= 1.25 ? '<span class="okchip">📈 Fase de ouro</span>' : f <= 0.75 ? '<span class="warnchip">📉 Crise política</span>' : '';
   const mood = r => r >= 80 ? '😍' : r >= 60 ? '🙂' : r >= 40 ? '😐' : r >= 20 ? '🙁' : '😠';
+  // Escada do império: cada degrau é 5x mais caro; marcos dobram a renda. Segure o botão para comprar vários.
+  function empireCard() {
+    const rows = Sim.empireInfo(s), income = Sim.empireIncome(s);
+    const first = rows.findIndex(r => r.owned === 0), vis = rows.filter((r, i) => r.owned > 0 || (first >= 0 && i <= first + 1));
+    const list = vis.map(r => `<div class="emp ${r.locked ? 'lock' : ''}"><div class="top"><span class="ico">${r.icon}</span><div class="nm">${r.name}<small>${r.owned ? `${num(r.owned)} unidades · ${M(r.income)}/mês` : r.desc}</small></div><div class="val">${r.owned ? '×' + r.mult : ''}<small>${r.owned ? 'renda' : ''}</small></div></div>
+      <div class="perks">${r.owned ? `<span>⭐ próximo marco: ${r.nextMilestone ? num(r.nextMilestone) + ' (renda ×2)' : 'todos alcançados'}</span>` : ''}${r.fort >= 1.15 ? '<span class="okchip">📈 Em alta</span>' : r.fort <= 0.85 ? '<span class="warnchip">📉 Em baixa</span>' : ''}</div>
+      <div class="btns"><button class="btn" data-ebuy="${r.k}" ${r.locked || s.cash < r.price ? 'disabled' : ''}>Comprar · ${M(r.price)}<small>${r.locked ? r.why : `rende +${M(r.unit)}/mês cada · segure para repetir`}</small></button></div></div>`).join('');
+    return `<div class="card"><h3>🚀 Seu império</h3><div class="big ${income ? 'pos' : ''}">${income ? '+' : ''}${M(Math.round(income))}</div><div class="mut" style="text-align:center">por mês, já no seu caixa</div>
+      <div class="mut" style="font-size:13px;margin:8px 0">Cada degrau é 5× mais caro que o anterior e rende mais. A cada marco de unidades a renda dobra. Para abrir degraus altos você precisa de muita gente (capital + cidades de fora).</div>${list}</div>`;
+  }
+
   function viewWorld() {
     const w = s.world, f = Sim.worldFactor(s);
     let top = '';
@@ -459,14 +472,23 @@
       return `<div class="row"><span>${n.icon} ${n.name}</span><span>${l.left}x de ${M(l.monthly)}</span></div>`;
     }).join('')}</div>` : '';
     const news = w.news.slice(0, 6).map(l => `<div class="logline">${l}</div>`).join('') || '<div class="mut">Nada de novo pelo mundo.</div>';
-    return `${top}${myCities}<div class="card"><h3>🌍 Seu lugar no mundo</h3>
+    return `${top}${empireCard()}${myCities}<div class="card"><h3>🌍 Seu lugar no mundo</h3>
       <div class="mut">Os outros países mexem um pouco com o seu comércio. Hoje isso muda suas empresas em <b class="${cls(f - 1)}">${(f - 1 >= 0 ? '+' : '') + ((f - 1) * 100).toFixed(1).replace('.', ',')}%</b>.</div></div>
       <div class="assets">${cards}</div>${lent}
       <div class="card"><h3>📰 Notícias do mundo</h3>${news}</div>`;
   }
 
+  // Escala do jogo: onde você está e quanto falta para o próximo marco
+  function scaleCard() {
+    const nw = Math.max(1, Sim.netWorth(s)), e = Math.floor(Math.log10(nw)), next = Math.pow(10, e + 1), prog = Math.round((Math.log10(nw) - e) * 100);
+    const names = [['mil', '1.000'], ['milhão', '1.000.000'], ['bilhão', '10⁹'], ['trilhão', '10¹²'], ['quatrilhão', '10¹⁵'], ['quintilhão', '10¹⁸ — a meta final']];
+    return `<div class="card"><h3>📏 Escala do jogo</h3><div class="row"><span>Seu patrimônio</span><b>${M(nw)}</b></div>
+      <div class="eff"><i><b style="width:${prog}%;background:var(--acc)"></b></i></div><div class="mut" style="font-size:12px">${prog}% do caminho até ${M(next)}</div>
+      <div class="mut" style="font-size:13px;margin-top:8px">${names.map(([n, v]) => `<div class="row" style="padding:2px 0"><span>${n}</span><b>${v}</b></div>`).join('')}</div>
+      <div class="mut" style="font-size:13px;margin-top:6px">O jogo vai de milhares até quintilhões. As fases: <b>capital</b> (até alguns milhões) → <b>investimentos</b> (os mercados têm limite) → <b>cidades de fora</b> → <b>império</b> (14 degraus, cada um 5× mais caro). Jogando uns 3 h por dia, o 1º quintilhão chega em uns 2 meses.</div></div>`;
+  }
   function viewNews() {
-    return `<div class="card"><h3>🎚️ Dificuldade: ${Math.round(Sim.DIFFICULTY * 100)}%</h3><div class="mut" style="font-size:14px">Custos da cidade e eventos ruins mais pesados. A equipe só ajuda se você escolher bem quem contratar e na hora certa.</div></div>
+    return `${scaleCard()}<div class="card"><h3>🎚️ Dificuldade: ${Math.round(Sim.DIFFICULTY * 100)}%</h3><div class="mut" style="font-size:14px">Custos da cidade e eventos ruins mais pesados. A equipe só ajuda se você escolher bem quem contratar e na hora certa.</div></div>
       <div class="card"><h3>📈 O jogo é progressivo</h3><div class="mut" style="font-size:14px">Quanto maior a cidade e quanto mais anos passam, mais caras ficam as obras, o treinamento e a manutenção, e mais pesados os eventos. O começo é fácil; depois cada passo exige mais tempo e mais cuidado, mesmo com a equipe certa. Não existe limite de tempo: jogue devagar.</div></div>
       <div class="btns"><button class="btn red" id="newgame">Recomeçar jogo</button></div>`;
   }
@@ -538,6 +560,7 @@
     else if (d.untreaty) { if (!confirm('Cancelar o tratado? A relação piora.')) return; r = Sim.cancelTreaty(s, d.untreaty); }
     else if (d.fborrow) { r = Sim.borrowForeign(s, d.fborrow, Math.min(5000, Sim.foreignLimit(s, d.fborrow))); if (r.ok) toast('🏦 Empréstimo recebido!'); }
     else if (d.frepay) r = Sim.repayForeign(s, d.frepay, Sim.worldInfo(s, d.frepay).owed);
+    else if (d.ebuy != null) { r = Sim.buyEmpire(s, +d.ebuy); }
     else if (d.motivate) { r = Sim.motivate(s, d.motivate); if (r.ok) toast('💵 Bônus pago!'); }
     else if (d.offer != null) { r = Sim.answerOffer(s, d.offer === '1'); }
     else if (d.cbuy) { r = Sim.buyColony(s, d.cbuy); if (r.ok) toast('🏙️ Cidade comprada!'); }
@@ -559,7 +582,7 @@
   });
 
   // ---------- Segurar o botão repete a ação (construir, demolir, evoluir, comprar, vender, imposto, empréstimo) ----------
-  const REPEATABLE = ['build', 'demo', 'evolve', 'buy', 'sell', 'tax', 'loan', 'pay'];
+  const REPEATABLE = ['build', 'demo', 'evolve', 'buy', 'sell', 'tax', 'loan', 'pay', 'ebuy'];
   let hold = null;
   function stopHold() {
     if (!hold) return;

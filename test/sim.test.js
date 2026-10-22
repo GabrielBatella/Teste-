@@ -1207,7 +1207,8 @@ test('com os anos os custos sobem um pouco (inflação)', () => {
   const s = Sim.newGame(3); s.pop = 100;
   const p0 = Sim.pressure(s); s.month = 120; const p10 = Sim.pressure(s); s.month = 360; const p30 = Sim.pressure(s);
   assert.ok(p0 < p10 && p10 < p30);
-  assert.ok(p30 / p0 > 1.3 && p30 / p0 < 1.5, 'inflação de ~1,2% ao ano: ' + p30 / p0);
+  assert.ok(p30 / p0 > 1.12 && p30 / p0 < 1.3, 'inflação de ~0,6% ao ano: ' + p30 / p0);
+  s.month = 5000; const p400 = Sim.pressure(s); s.month = 50000; assert.equal(Sim.pressure(s), p400, 'a inflação tem teto (2,5x)');
 });
 
 test('fases da cidade: vilarejo até megalópole, com o quanto cada uma pesa', () => {
@@ -1357,7 +1358,7 @@ test('acontecimentos começam pequenos e crescem com o tamanho da cidade', () =>
     for (let k = 0; k < 200; k++) { const s = Sim.newGame(500 + k); s.pop = pop; s.cash = 1e6; const c0 = s.cash; for (let m = 0; m < 24; m++) { s.cash = 1e6; Sim.step(s); tot += Math.abs(s.cash - 1e6); } n++; }
     return tot / n; };
   const peq = perda(20), grande = perda(900);
-  assert.ok(grande > peq * 2, `cidade grande mexe mais no caixa: ${peq} x ${grande}`);
+  assert.ok(grande > peq * 1.5, `cidade grande mexe mais no caixa: ${peq} x ${grande}`);
 });
 
 test('treinamento leva tempo: paga ao começar, sobe de nível só depois de alguns meses e um por vez', () => {
@@ -1537,4 +1538,50 @@ test('cidade de fora em crise política perde dinheiro e em fase de ouro lucra m
   assert.ok(crise < 0, 'perde dinheiro em crise: ' + crise); assert.ok(ouro > 0 && ouro > crise * -1, 'lucra em fase de ouro: ' + ouro);
   const t = rica(362); t.cash = 5e10; t.pop = 25000; t.world.fort.imperio = 0.5; const barato = Sim.cityPrice(t, 'imperio'); t.world.fort.imperio = 1.6; const caro = Sim.cityPrice(t, 'imperio');
   assert.ok(caro > barato * 3, 'cidade em crise sai barata'); assert.ok(Sim.cityPrice(t, 'imperio') > 1e8, 'cidades são muito caras');
+});
+
+// ---------- Escala até quintilhões: formatação e escada do Império ----------
+test('dinheiro grande aparece abreviado e nunca com dígitos demais', () => {
+  assert.equal(Sim.money(999999999), 'R$ 999.999.999');
+  assert.equal(Sim.money(1e9), 'R$ 1,00 bi'); assert.equal(Sim.money(12.5e9), 'R$ 12,5 bi'); assert.equal(Sim.money(123e9), 'R$ 123 bi');
+  assert.equal(Sim.money(1e12), 'R$ 1,00 tri'); assert.equal(Sim.money(4.5678e15), 'R$ 4,57 quatri');
+  assert.equal(Sim.money(1e18), 'R$ 1,00 quint'); assert.equal(Sim.money(-7.2e21), '-R$ 7,20 sext');
+  assert.ok(Sim.money(3.3e30).length < 22);
+});
+
+test('escada do Império: preço sobe a cada unidade, marcos dobram a renda e degraus exigem o anterior e gente', () => {
+  const s = rica(370); s.cash = 1e12; s.pop = 5000;
+  const r0 = Sim.empireInfo(s); assert.equal(r0.length, 14);
+  assert.equal(r0[0].price, Sim.EMPIRE_CFG.p0); assert.equal(r0[1].price, Sim.EMPIRE_CFG.p0 * Sim.EMPIRE_CFG.r);
+  assert.equal(r0[1].locked, true, 'precisa do degrau anterior'); assert.equal(Sim.buyEmpire(s, 1).ok, false);
+  const c0 = s.cash; assert.ok(Sim.buyEmpire(s, 0).ok); assert.equal(s.cash, c0 - Sim.EMPIRE_CFG.p0);
+  assert.ok(Sim.empireInfo(s)[0].price > Sim.EMPIRE_CFG.p0, 'a próxima unidade é mais cara');
+  assert.ok(Sim.buyEmpire(s, 1).ok, 'agora abre o degrau 2');
+  s.pop = 20; assert.equal(Sim.empireInfo(s)[2].locked, true); assert.ok(Sim.empireInfo(s)[2].why.includes('habitantes'));
+  s.pop = 5000; const base = Sim.empireInfo(s)[0].unit; for (let i = 0; i < 9; i++) { s.cash = 1e12; Sim.buyEmpire(s, 0); }
+  assert.equal(Sim.empireInfo(s)[0].owned, 10); assert.equal(Sim.empireMult(10), 2); assert.equal(Sim.empireMult(25), 4);
+  assert.ok(Sim.empireInfo(s)[0].income > 10 * base * 1.9 * 0.5, 'o marco de 10 dobrou a renda');
+  const cash = s.cash; s.pop = 5000; Sim.step(s); assert.ok(s.report.empire > 0 && s.cash > cash - 1e11);
+  assert.ok(Sim.netWorth(s) > 0); const txt = Sim.serialize(s); assert.equal(Sim.load(txt).empire.n[0], 10);
+});
+
+test('ritmo da economia: 1 quintilhão em ~2 meses de jogo, trilhões só depois de dias (não em um dia)', () => {
+  const o = Sim.empireSimulate(129600, 2e5, 300, [720, 2160, 4320, 10080, 43200, 86400, 129600]);
+  assert.ok(o[720] > 3e5 && o[720] < 3e6, '1 hora ≈ R$ 1 mi: ' + o[720]);
+  assert.ok(o[2160] < 1e9, 'um dia de jogo (≈2.000 meses) fica longe de trilhões: ' + o[2160]);
+  assert.ok(o[10080] > 3e9 && o[10080] < 5e11, 'uma semana ≈ dezenas de bilhões: ' + o[10080]);
+  assert.ok(o[43200] > 1e14 && o[43200] < 1e17, 'um mês ≈ quatrilhões: ' + o[43200]);
+  assert.ok(o[86400] > 5e17 && o[86400] < 1e19, '2 meses ≈ 1 quintilhão: ' + o[86400]);
+  assert.ok(o[129600] > o[86400], 'continua crescendo');
+});
+
+test('sem bola de neve escondida: choques de alta e preços gigantes não geram dinheiro infinito', () => {
+  const s = rica(380); s.cash = 1e9; s.pop = 30000; Sim.buy(s, 'ouro', 5e8);
+  const v0 = s.assets.ouro.units * s.assets.ouro.price;
+  for (let m = 0; m < 1200; m++) { s.pop = 30000; s.lowHappy = 0; s.cash = Math.max(s.cash, 1e9); Sim.step(s); if (s.over) break; }
+  const v1 = s.assets.ouro.units * s.assets.ouro.price;
+  assert.ok(v1 < v0 * 30, `ouro saturado não explode: ${v0} -> ${v1}`);
+  const t = Sim.newGame(381); t.assets.cdb.price = 5e8; t.assets.cdb.units = 4; t.assets.cdb.hist = [5e8];
+  const val = t.assets.cdb.units * t.assets.cdb.price; Sim.step(t);
+  assert.ok(t.assets.cdb.price < 1e3, 'preço reescrito'); assert.ok(Math.abs(t.assets.cdb.units * t.assets.cdb.price / val - 1) < 0.05, 'valor da posição preservado');
 });

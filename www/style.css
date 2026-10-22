@@ -200,3 +200,7 @@ main.mapmode #map3d{height:100%;border-radius:0}
 .mapbtn{width:40px;height:40px;border-radius:50%;border:0;background:rgba(10,18,28,.38);color:#fff;font-size:20px;padding:0;backdrop-filter:blur(2px)}
 .mapbtn.on{background:rgba(76,201,240,.55)}
 body.maptab #toast{display:none!important}
+
+.emp{background:#0b121a;border-radius:14px;padding:10px 12px;margin-top:10px}.emp.lock{opacity:.8}
+.emp .top{display:flex;gap:10px;align-items:center}.emp .ico{font-size:28px}.emp .nm{font-size:15px;font-weight:700}.emp .nm small{display:block;font-weight:400;color:var(--mut);font-size:12px}
+.emp .val{margin-left:auto;text-align:right;font-weight:800;font-size:16px}.emp .val small{display:block;font-size:11px;color:var(--mut);font-weight:400}

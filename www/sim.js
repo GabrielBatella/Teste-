@@ -3,6 +3,17 @@
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.Sim = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
+  // =====================================================================================================
+  // GUIA DA ECONOMIA: escala e ritmo (leia antes de mexer em qualquer valor)
+  // O jogo vai de R$ 10 mil até 1 quintilhão (1e18) e além. Cada fase tem a sua escala:
+  //   1. CAPITAL .......... FLOW, COST_HARD, EVENT_HARD, SIZE_K, YEAR_K, preços dos BUILDINGS      -> até ~R$ 1 milhão
+  //   2. INVESTIMENTOS .... DEPTH (profundidade de cada mercado), marketScale                      -> estabilizam em ~R$ 100 milhões
+  //   3. CIDADES DE FORA .. CITY_POP, cityPrice (6.000/habitante), COLONY_MIN_POP, política (fort)  -> R$ 10 milhões a 300 milhões
+  //   4. IMPÉRIO (escada) . EMPIRE_CFG: 14 degraus, cada um 5x mais caro, +15% por unidade, marcos x2   -> de R$ 200 mil até quintilhões
+  // Ritmo-alvo a 1x (1 mês de jogo = 5 s) com ~3 h de jogo por dia (~2.000 meses/dia): 1 h = R$ 1 mi · 1 dia = R$ 5 mi
+  //   · 3 dias = R$ 200 mi · 1 semana = R$ 30 bi · 1 mês = R$ 100 quatri · 2 meses = R$ 1 quint. Os testes (empireSimulate) travam essa curva.
+  // Valores grandes aparecem abreviados (mi, bi, tri, quatri, quint, sext, sept...) por money().
+  // =====================================================================================================
   const COLS = 6, START_ROWS = 10, HALL = 3 * COLS + 2, OLD_TILES = 42;
   const BASIC_COST = 1.5;
   const OVERDRAFT_LIMIT = 15000, LOAN_LIMIT = 30000, LOAN_RATE = 0.015, OVERDRAFT_RATE = 0.03, FEE = 0.003;
@@ -21,9 +32,10 @@
   const DIFFICULTY = 1.3;
   const COST_HARD = 1.15, EVENT_HARD = 1.05;
   // Progressão: quanto maior a cidade e mais velho o jogo, mais pesado e mais demorado. O começo (até ~50 habitantes) não muda.
-  const SIZE_K = 0.25, YEAR_K = 0.012;
+  const SIZE_K = 0.15, YEAR_K = 0.006;
   const sizeF = s => 1 + SIZE_K * Math.log(1 + Math.max(0, s.pop - 50) / 300);   // cresce devagar com o tamanho
-  const yearsF = s => 1 + YEAR_K * (s.month / 12);                                // custos sobem um pouco a cada ano
+  const YEAR_CAP = 2.5;                                                            // a inflação para em 2,5x (depois de ~250 anos de jogo)
+  const yearsF = s => Math.min(YEAR_CAP, 1 + YEAR_K * (s.month / 12));            // custos sobem um pouco a cada ano
   const pressure = s => sizeF(s) * yearsF(s);                                    // pesa na manutenção e nos serviços
   // Acontecimentos (enchente, festival, turistas, pedidos...) começam pequenos e crescem com o tamanho da cidade
   const eventRamp = s => Math.max(0.25, Math.min(1, 0.25 + 0.75 * s.pop / 250));
@@ -67,7 +79,7 @@
   const HALL_UPKEEP = 50, HALL_JOBS = 5;
   // Gastos públicos: tudo que é do governo (serviços, escolas, polícia, energia, água, meio ambiente) custa manutenção,
   // e cada unidade a mais do mesmo tipo custa mais que a anterior (+10% por unidade já existente). A base é 30% maior que a de um prédio privado.
-  const PUBLIC_ESC = 0.10, PUBLIC_BASE = 1.3;
+  const PUBLIC_ESC = 0.05, PUBLIC_BASE = 1.1;
   const isPublic = k => !!BUILDINGS[k] && BUILDINGS[k].kind !== 'Privado';
   // uu = "unidades de manutenção" (soma do peso de cada prédio conforme o nível); sem evolução, uu = n
   const upkeepTotal = (k, n, uu) => { const b = BUILDINGS[k]; if (uu == null) uu = n; return b.kind === 'Privado' ? b.upkeep * uu : b.upkeep * PUBLIC_BASE * (uu + PUBLIC_ESC * uu * (n - 1) / 2); };
@@ -226,7 +238,7 @@
     ASSETS.forEach(a => { assets[a.key] = newAsset(); });
     return {
       v: 1, seed: seed == null ? (Date.now() | 0) : seed, month: 0, cash: 10000, debt: 0, taxRate: 10,
-      tiles, lv: [], hist: [], histN: 0, cities: {}, offer: null, landBought: 0, pop: 20, happy: 55, assets, mods: {econ: 1, econLeft: 0, upkeep: 1, upkeepLeft: 0},
+      tiles, lv: [], hist: [], histN: 0, cities: {}, offer: null, empire: emptyEmpire(), landBought: 0, pop: 20, happy: 55, assets, mods: {econ: 1, econLeft: 0, upkeep: 1, upkeepLeft: 0},
       log: ['Bem-vindo, prefeito! Cuide da cidade e faça o dinheiro render.'],
       report: null, over: null, staff: defaultStaff(), staffSeen: {}, staffStats: {errors: 0, cost: 0},
       market: {rate: BASE_RATE, prev: BASE_RATE}, world: newWorld(), lowHappy: 0, netHist: [10000],
@@ -510,6 +522,81 @@
     s.colonyNet = net;
   }
 
+  // ---------- Império: escada de expansão (cada degrau é 5x mais caro que o anterior, como no Adventure Capitalist) ----------
+  // Preço da unidade n do degrau k = p0 · r^k · g^n. Cada unidade rende y do preço-base por mês. A cada marco (10, 25, 50...) a renda do degrau dobra.
+  // Para abrir um degrau é preciso ter o anterior e gente suficiente (capital + cidades de fora): o império depende de quão grande é o seu povo.
+  const EMPIRE_CFG = {p0: 2e5, r: 5, y: 0.0025, g: 1.15, milestones: [10, 25, 50, 100, 200, 400, 800], popBase: 100, popGrow: 1.5, tax: 0};
+  const EMPIRE = [
+    ['franquias', 'Franquias locais', '🏪', 'Lojas de rua com a sua marca.'], ['redes', 'Redes regionais', '🏬', 'Dezenas de lojas por toda a região.'],
+    ['industrias', 'Indústrias nacionais', '🏭', 'Fábricas que abastecem o país.'], ['multinac', 'Multinacionais', '🌐', 'Filiais em vários continentes.'],
+    ['conglom', 'Conglomerados', '🏢', 'Dezenas de empresas sob um só dono.'], ['bancos', 'Bancos globais', '🏦', 'Crédito para governos e gigantes.'],
+    ['energia', 'Redes de energia', '⚡', 'Usinas e linhas que sustentam países.'], ['asteroides', 'Mineração de asteroides', '☄️', 'Metais raros caçados no espaço.'],
+    ['lua', 'Colônias lunares', '🌙', 'Cidades e fábricas na Lua.'], ['marte', 'Terraformação de Marte', '🔴', 'Transformar um planeta inteiro.'],
+    ['frotas', 'Frotas estelares', '🚀', 'Naves de carga entre sistemas.'], ['estrelas', 'Colheita de estrelas', '☀️', 'Energia direto das estrelas.'],
+    ['galaxias', 'Impérios galácticos', '🌌', 'Milhares de mundos sob a sua bandeira.'], ['universo', 'Domínio do universo', '🪐', 'O fim da escala conhecida.'],
+  ].map(([key, name, icon, desc]) => ({key, name, icon, desc}));
+  const emptyEmpire = () => ({n: EMPIRE.map(() => 0), spent: EMPIRE.map(() => 0), fort: EMPIRE.map(() => 1)});
+  const empireOf = s => { if (!s.empire) s.empire = emptyEmpire(); return s.empire; };
+  const empirePrice = (k, n) => EMPIRE_CFG.p0 * Math.pow(EMPIRE_CFG.r, k) * Math.pow(EMPIRE_CFG.g, n);
+  const empireMult = n => Math.pow(2, EMPIRE_CFG.milestones.filter(m => n >= m).length);
+  const empireBaseUnit = k => EMPIRE_CFG.p0 * Math.pow(EMPIRE_CFG.r, k) * EMPIRE_CFG.y;
+  const empirePopReq = k => Math.round(EMPIRE_CFG.popBase * Math.pow(EMPIRE_CFG.popGrow, k));
+  const totalPeople = s => s.pop + cityList(s).reduce((t, c) => t + c.pop, 0);
+  function empireIncome(s) {
+    const e = empireOf(s); let t = 0;
+    for (let k = 0; k < EMPIRE.length; k++) t += e.n[k] * empireBaseUnit(k) * empireMult(e.n[k]) * e.fort[k];
+    return t;
+  }
+  function empireInfo(s) {
+    const e = empireOf(s), people = totalPeople(s);
+    return EMPIRE.map((d, k) => {
+      const n = e.n[k], next = EMPIRE_CFG.milestones.find(m => m > n);
+      const why = k > 0 && e.n[k - 1] < 1 ? `compre antes: ${EMPIRE[k - 1].name}` : people < empirePopReq(k) ? `precisa de ${empirePopReq(k).toLocaleString('pt-BR')} habitantes no total (hoje ${Math.floor(people).toLocaleString('pt-BR')})` : null;
+      return {k, ...d, owned: n, price: empirePrice(k, n), unit: empireBaseUnit(k) * empireMult(n) * e.fort[k], income: n * empireBaseUnit(k) * empireMult(n) * e.fort[k], mult: empireMult(n), nextMilestone: next || null,
+        fort: e.fort[k], locked: !!why, why, spent: e.spent[k]};
+    });
+  }
+  function buyEmpire(s, k) {
+    if (s.over) return {ok: false, msg: 'O jogo acabou.'};
+    const e = empireOf(s), i = empireInfo(s)[k];
+    if (!i) return {ok: false, msg: 'Degrau inválido.'};
+    if (i.locked) return {ok: false, msg: 'Ainda não: ' + i.why + '.'};
+    if (s.cash < i.price) return {ok: false, msg: 'Dinheiro insuficiente.'};
+    s.cash -= i.price; e.n[k]++; e.spent[k] += i.price;
+    if (EMPIRE_CFG.milestones.includes(e.n[k])) note(s, `🏆 ${EMPIRE[k].name}: ${e.n[k]} unidades! A renda desse degrau dobrou.`);
+    return {ok: true, price: i.price, owned: e.n[k]};
+  }
+  const empireValue = s => empireOf(s).spent.reduce((t, v) => t + v * 0.8, 0);
+  // Todo mês: renda do império e política dos negócios (um setor sobe quando outro cai)
+  function empireStep(s) {
+    const e = empireOf(s);
+    for (let k = 0; k < EMPIRE.length; k++) e.fort[k] = clamp(e.fort[k] + (1 - e.fort[k]) * 0.04 + (worldRand(s) - 0.5) * 0.05, 0.6, 1.5);
+    if (worldRand(s) < 0.07) {
+      const up = Math.floor(worldRand(s) * EMPIRE.length); let down = Math.floor(worldRand(s) * EMPIRE.length); if (down === up) down = (up + 1) % EMPIRE.length;
+      const d = 0.15 + worldRand(s) * 0.2;
+      e.fort[up] = clamp(e.fort[up] + d, 0.6, 1.5); e.fort[down] = clamp(e.fort[down] - d, 0.6, 1.5);
+      if (e.n[up] > 0 || e.n[down] > 0) worldNote(s, `📊 Reviravolta nos negócios: ${EMPIRE[up].name} bombam 📈 e ${EMPIRE[down].name} sofrem 📉.`);
+    }
+    const inc = empireIncome(s); s.empireNet = inc; s.cash += inc;
+  }
+  // Modelo puro (sem o resto do jogo) de um jogador que sempre compra o melhor retorno: serve para travar o ritmo nos testes
+  function empireSimulate(months, cash0, base, checks) {
+    const C = EMPIRE_CFG, n = EMPIRE.map(() => 0); let cash = cash0, inc = 0; const out = {};
+    const unit = k => empireBaseUnit(k) * empireMult(n[k]), set = new Set(checks || []);
+    const worth = () => cash + n.reduce((t, c, k) => { let v = 0; for (let i = 0; i < c; i++) v += empirePrice(k, i) * 0.8; return t + v; }, 0);
+    for (let m = 1; m <= months; m++) {
+      cash += inc + base;
+      for (let g = 0; g < 400; g++) {
+        let best = -1, bp = Infinity;
+        for (let k = 0; k < EMPIRE.length; k++) { const pr = empirePrice(k, n[k]); if (pr > cash || (k > 0 && n[k - 1] < 1)) continue; const pb = pr / unit(k); if (pb < bp) { bp = pb; best = k; } }
+        if (best < 0) break;
+        cash -= empirePrice(best, n[best]); n[best]++; inc = n.reduce((t, c, k) => t + c * unit(k), 0);
+      }
+      if (set.has(m)) out[m] = worth();
+    }
+    return out;
+  }
+
   // ---------- Profundidade do mercado: dinheiro demais num lugar só rende cada vez menos ----------
   // Evita a bola de neve dos bilhões: acima da "profundidade" de cada investimento, o ganho vai caindo.
   // Comprar cidades e países amplia o mercado e abre espaço para realocar o dinheiro.
@@ -724,7 +811,7 @@
   }
   const foreignDebt = s => NEIGHBORS.reduce((t, n) => t + (s.world.owed[n.key] || 0), 0);
   const lentValue = s => s.world.lent.reduce((t, l) => t + l.left * l.monthly, 0);
-  function netWorth(s) { return s.cash + holdingsValue(s) + buildingsValue(s) + lentValue(s) * 0.8 - s.debt - foreignDebt(s) + cityList(s).reduce((t, c) => t + cityValue(c), 0); }
+  function netWorth(s) { return s.cash + holdingsValue(s) + buildingsValue(s) + lentValue(s) * 0.8 - s.debt - foreignDebt(s) + cityList(s).reduce((t, c) => t + cityValue(c), 0) + empireValue(s); }
 
   // Preço de uma obra: o Arquiteto consegue desconto para toda a cidade
   const buildCost = (s, type) => Math.round(BUILDINGS[type].cost * (1 - buildDiscount(s)) * priceF(s));
@@ -1066,7 +1153,8 @@
   // Aplica choques de preço; o Gestor de Risco suaviza as quedas
   function mult(s, m) {
     const soft = shockSoftener(s);
-    for (const k in m) if (s.assets[k]) s.assets[k].price *= m[k] < 1 ? 1 - (1 - m[k]) * (1 - soft) : m[k];
+    // quedas valem inteiras (menos o Gestor de Risco); altas respeitam a profundidade do mercado, senão choques de alta viram bola de neve
+    for (const k in m) { const x = s.assets[k]; if (x) x.price *= m[k] < 1 ? 1 - (1 - m[k]) * (1 - soft) : 1 + (m[k] - 1) * liquidity(s, k, x.units * x.price); }
   }
 
   function step(s) {
@@ -1136,6 +1224,8 @@
         if (d.fail && r < d.fail) { x.price *= 0.4; note(s, `💥 O ${d.name.replace(' (CDB)', '')} quebrou! Quem tinha dinheiro lá perdeu boa parte.`); }
         else if (d.scare && r < d.scare + (d.fail || 0)) { x.price *= 1 - d.hit; note(s, `⚠️ ${d.name.replace(' (CDB)', '')} passou por uma crise de confiança: o CDB caiu ${Math.round(d.hit * 100)}%.`); }
       }
+      // preços gigantes são reescritos (menos unidades de preço maior): o valor da posição não muda e o ativo nunca trava no teto
+      if (x.price > 1e8) { const f = x.price / 100; x.units *= f; x.price = 100; x.hist = x.hist.map(h => h / f); }
       x.hist.push(x.price); if (x.hist.length > 36) x.hist.shift();
       if (d.div && x.units > 0) dividends += x.units * x.price * d.div * liq;
     });
@@ -1153,7 +1243,7 @@
       let r = mulberry(s) * ws.reduce((t, w) => t + w, 0);
       for (let i = 0; i < EVENTS.length; i++) { if ((r -= ws[i]) < 0) { EVENTS[i].run(s); break; } }
     }
-    if (!sub) { worldStep(s); trainingStep(s); perfStep(s); offerStep(s); citiesStep(s); }
+    if (!sub) { worldStep(s); trainingStep(s); perfStep(s); offerStep(s); citiesStep(s); empireStep(s); }
 
     staffActs(s, s.month % 2 === 1);   // a equipe decide a cada 2 meses (só emergências todo mês)
 
@@ -1170,7 +1260,7 @@
       }
     }
 
-    s.report = {taxes, rent, commerce, industry, exports, cashYield, dividends, income, maint, basic, salaries, diplomacy, interest, overdraft, expenses, colonies: s.colonyNet || 0, net: income + dividends + (s.colonyNet || 0) - expenses};
+    s.report = {taxes, rent, commerce, industry, exports, cashYield, dividends, income, maint, basic, salaries, diplomacy, interest, overdraft, expenses, colonies: s.colonyNet || 0, empire: s.empireNet || 0, net: income + dividends + (s.colonyNet || 0) + (s.empireNet || 0) - expenses};
     if (!sub) { s.netHist.push(netWorth(s)); if (s.netHist.length > 48) s.netHist.shift(); }
 
 
@@ -1518,9 +1608,16 @@
     builderEvolves(s, 'arquiteto', pickCity); builderEvolves(s, 'infra', pickInfra); builderEvolves(s, 'ambiental', pickGreen); builderEvolves(s, 'social', pickSocial);
   }
 
+  // Dinheiro: até R$ 999 milhões com todos os dígitos; acima disso abreviado (bi, tri, quatri, quint, sext, sept, oct)
+  const BIG = [[1e33, 'dec'], [1e30, 'non'], [1e27, 'oct'], [1e24, 'sept'], [1e21, 'sext'], [1e18, 'quint'], [1e15, 'quatri'], [1e12, 'tri'], [1e9, 'bi']];
   function money(v) {
-    const sign = v < 0 ? '-' : '';
-    return `${sign}R$ ${Math.round(Math.abs(v)).toLocaleString('pt-BR')}`;
+    const sign = v < 0 ? '-' : '', a = Math.abs(v);
+    if (!(a >= 1e9)) return `${sign}R$ ${Math.round(a).toLocaleString('pt-BR')}`;
+    for (const [lim, nome] of BIG) if (a >= lim) {
+      const x = a / lim, txt = x >= 100 ? x.toFixed(0) : x >= 10 ? x.toFixed(1) : x.toFixed(2);
+      return `${sign}R$ ${txt.replace('.', ',')} ${nome}`;
+    }
+    return `${sign}R$ ${a.toLocaleString('pt-BR')}`;
   }
 
   function serialize(s) { return JSON.stringify(s); }
@@ -1542,6 +1639,7 @@
       if (!s.market) s.market = {rate: BASE_RATE, prev: BASE_RATE};
       if (!s.lv) s.lv = [];
       if (!s.cities) s.cities = {};
+      if (!s.empire) s.empire = emptyEmpire();
       // saves antigos: as filiais abstratas viram cidades de verdade
       if (s.colonies) { Object.values(s.colonies).forEach(o => { if (nb(o.key) && !s.cities[o.key]) { const c = makeCity(s, o.key); c.nation = !!o.nation; c.paid = o.cost || 0; s.cities[o.key] = c; } }); delete s.colonies; }
       Object.values(s.cities).forEach(c => { attachCity(s, c); STAFF_ORDER.forEach(k => { if (!c.staff[k]) c.staff[k] = {hired: false, auto: true, level: 1}; }); });
@@ -1553,7 +1651,7 @@
   }
 
   return {COLS, ROWS: START_ROWS, HALL, BUILDINGS, ASSETS, SAFE_ASSETS, RISKY_ASSETS, FIXED_ASSETS, BASE_RATE, assetYield, STAFF, STAFF_ORDER, SALARY_ORDER, AREAS, MAX_LEVEL, NEIGHBORS,
-    hired, active, levelOf, isUnlocked, lockReason, readiness, hireWarnings, DIFFICULTY, COST_HARD, EVENT_HARD, PUBLIC_ESC, isPublic, upkeepInfo, publicCosts, pressure, priceF, sizeF, phaseOf, PHASES, staffCost, salaryOf, efficiency, errorChance, staffInfo, upgrade, train, trainMonths, motivate, answerOffer, offerSalary, starsOf, PERF_WARN, colonyInfo, buyColony, annexColony, SUB_ROLES, salaryFlat: k => salaryAt(k, FLAT_LEVEL), CITY_POP, FLAT_LEVEL, cityPrice, assetLiquidity, assetDepth, marketScale, NATION_MIN_POP, NATION_MIN_REL, NATION_MIN_CITY, sellColony, coloniesList, cityList, COLONY_MIN_POP, COLONY_MIN_REL, upgradeCost, teamBonus,
+    hired, active, levelOf, isUnlocked, lockReason, readiness, hireWarnings, DIFFICULTY, COST_HARD, EVENT_HARD, PUBLIC_ESC, isPublic, upkeepInfo, publicCosts, pressure, priceF, sizeF, phaseOf, PHASES, staffCost, salaryOf, efficiency, errorChance, staffInfo, upgrade, train, trainMonths, motivate, answerOffer, offerSalary, starsOf, PERF_WARN, colonyInfo, EMPIRE, EMPIRE_CFG, empireInfo, buyEmpire, empireIncome, empirePrice, empireMult, empirePopReq, empireSimulate, buyColony, annexColony, SUB_ROLES, salaryFlat: k => salaryAt(k, FLAT_LEVEL), CITY_POP, FLAT_LEVEL, cityPrice, assetLiquidity, assetDepth, marketScale, NATION_MIN_POP, NATION_MIN_REL, NATION_MIN_CITY, sellColony, coloniesList, cityList, COLONY_MIN_POP, COLONY_MIN_REL, upgradeCost, teamBonus,
     loanRate, loanLimit, hire, fire, setAuto, recommend, recCity, recInfra, recGreen, recSocial, needs, advice, hint,
     picks: {city: pickCity, infra: pickInfra, green: pickGreen, social: pickSocial, asset: pickAsset, group: bestGroup}, TARGETS, freeTiles, buildCost, SKILLS, LOT_SIZE, GIFT_COST, TREATY_COST, TREATY_UPKEEP, FLOW, WORLD_ASSETS, LOAN_LIMIT, OVERDRAFT_LIMIT,
     worldInfo, worldFactor, gift, signTreaty, cancelTreaty, borrowForeign, repayForeign, answerRequest, answerDilemma, foreignDebt, lentValue, foreignRate, foreignLimit,
