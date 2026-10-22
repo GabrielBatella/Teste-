@@ -226,7 +226,7 @@
     ASSETS.forEach(a => { assets[a.key] = newAsset(); });
     return {
       v: 1, seed: seed == null ? (Date.now() | 0) : seed, month: 0, cash: 10000, debt: 0, taxRate: 10,
-      tiles, lv: [], hist: [], histN: 0, colonies: {}, offer: null, landBought: 0, pop: 20, happy: 55, assets, mods: {econ: 1, econLeft: 0, upkeep: 1, upkeepLeft: 0},
+      tiles, lv: [], hist: [], histN: 0, cities: {}, offer: null, landBought: 0, pop: 20, happy: 55, assets, mods: {econ: 1, econLeft: 0, upkeep: 1, upkeepLeft: 0},
       log: ['Bem-vindo, prefeito! Cuide da cidade e faça o dinheiro render.'],
       report: null, over: null, staff: defaultStaff(), staffSeen: {}, staffStats: {errors: 0, cost: 0},
       market: {rate: BASE_RATE, prev: BASE_RATE}, world: newWorld(), lowHappy: 0, netHist: [10000],
@@ -240,7 +240,8 @@
   }
   const hired = (s, k) => !!(s.staff && s.staff[k] && s.staff[k].hired);
   const active = (s, k) => hired(s, k) && s.staff[k].auto;
-  const levelOf = (s, k) => hired(s, k) ? (s.staff[k].level || 1) : 0;
+  const FLAT_LEVEL = 4;                                                 // administradores das cidades de fora não têm nível: dão conta de qualquer tamanho
+  const levelOf = (s, k) => hired(s, k) ? (s.isSub ? FLAT_LEVEL : (s.staff[k].level || 1)) : 0;
   const salaryAt = (k, lvl) => Math.round(STAFF[k].salary * SALARY_MULT[lvl - 1] * FLOW);
   const salaryOf = (s, k) => hired(s, k) ? Math.round(salaryAt(k, levelOf(s, k)) * (s.staff[k].raise || 1)) : 0;
   const PERF_MIN = 0.3, PERF_MAX = 1.3, PERF_WARN = 0.75;
@@ -253,6 +254,7 @@
   // Todos estão liberados desde o começo: quem decide é o jogador. Os campos pop/nw dizem a partir de quando compensa.
   function lockReason(s, k) { return null; }
   function readiness(s, k) {
+    if (s.isSub) return {early: false, text: null};
     const f = STAFF[k], need = [];
     if (f.pop && s.pop < f.pop) need.push(`${f.pop} habitantes`);
     if (f.nw && netWorth(s) < f.nw) need.push(`patrimônio de ${money(f.nw)}`);
@@ -265,7 +267,7 @@
   const isUnlocked = (s, k) => lockReason(s, k) === null;
   // Eficiência: 1 = dá conta da cidade; menos que isso = sobrecarregado
   const capacityOf = (s, k) => CAPACITY[levelOf(s, k) - 1] || 0;
-  const efficiency = (s, k) => hired(s, k) ? clamp(capacityOf(s, k) / Math.max(1, s.pop), 0.25, 1) : 0;
+  const efficiency = (s, k) => hired(s, k) ? (s.isSub ? 1 : clamp(capacityOf(s, k) / Math.max(1, s.pop), 0.25, 1)) : 0;
   // Bônus de time completo: +4% para cada colega da mesma área contratado
   const teamBonus = (s, k) => 1 + TEAM_BONUS * (STAFF_ORDER.filter(x => STAFF[x].area === STAFF[k].area && hired(s, x)).length - 1);
   // "Nível efetivo": nível × eficiência × bônus de time (é o que vira efeito no jogo)
@@ -296,7 +298,7 @@
   const shockSoftener = s => Math.min(0.6, 0.05 * pw(s, 'risco'));
   const econSoftener = s => Math.min(0.6, 0.06 * pw(s, 'economista'));
   const auditRefund = s => Math.min(0.5, 0.04 * lv(s, 'auditor'));
-  const maxBuilds = s => Math.ceil(lv(s, 'arquiteto') / 4);
+  const maxBuilds = s => s.isSub ? 1 + Math.floor(s.pop / 6000) : Math.ceil(lv(s, 'arquiteto') / 4);
 
   function upgradeCost(s, k) { return hired(s, k) && levelOf(s, k) < MAX_LEVEL ? Math.round(TRAIN_COST[levelOf(s, k) - 1] * priceF(s)) : null; }
   function upgrade(s, k) {
@@ -392,101 +394,129 @@
     s.offer = null; return {ok: true};
   }
 
-  // ---------- Cidades em outros países: filiais que rendem todo mês ----------
-  const COLONY_MIN_POP = 2000, COLONY_MIN_REL = 55, COL_MAX = 10, NATION_MAX = 15, NATION_MULT = 3, NATION_MIN_POP = 10000, NATION_MIN_REL = 70, NATION_MIN_LEVEL = 5;
-  const colMax = c => c.nation ? NATION_MAX : COL_MAX;
-  const colonyScaleNow = s => Math.max(25000, 0.06 * Math.max(0, netWorth(s)));
-  function colonyPrice(s, key) { return Math.round(colonyScaleNow(s) * (0.5 + nb(key).wealth / 60000) * clamp(s.world.econ[key], 0.7, 1.3) / 1000) * 1000; }
-  const colonyPop = c => Math.round(3000 * Math.pow(c.scale / 25000, 0.35) * Math.pow(c.level, 1.4) * (c.nation ? 8 : 1));
-  const colonyUpCost = c => Math.round(c.scale * 0.10 * Math.pow(1.25, c.level - 1) * (c.nation ? NATION_MULT : 1));
-  const colonyUpMonths = c => 4 + 2 * c.level;
-  function colonyNet(s, c) {
-    const w = s.world, rel = w.rel[c.key], relF = rel >= 45 ? 1 : rel >= 30 ? 0.7 : 0.4;
-    return c.scale * (0.004 + 0.0025 * (c.level - 1)) * (c.nation ? NATION_MULT : 1) * clamp(w.econ[c.key], 0.6, 1.4) * relF * (w.treaty[c.key] ? 1.1 : 1);
+  // ---------- Cidades em outros países: cidades de verdade, cada uma com a sua economia e os seus administradores ----------
+  // Cada país tem uma cidade já construída. Depois de comprar, ela roda como a sua capital (população, prédios, impostos, custos),
+  // mas o dinheiro é um só: o lucro cai no seu caixa e as obras saem dele. Os administradores não têm nível: dão conta de qualquer tamanho.
+  const COLONY_MIN_POP = 2000, COLONY_MIN_REL = 55, NATION_MIN_POP = 10000, NATION_MIN_REL = 70, NATION_MIN_CITY = 15000, NATION_TAX = 1.5, NATION_PRICE = 6;
+  const SUB_ROLES = ['arquiteto', 'obras', 'infra', 'ambiental', 'social', 'auditor', 'contador', 'economista'];
+  const CITY_POP = {vizinha: 2400, republica: 6400, reino: 12800, uniao: 4800, imperio: 19200, federacao: 8000, ilhas: 3200, pampas: 5600, ducado: 7200, emirado: 16000, arquip: 9600};
+  const cityList = s => Object.values(s.cities || {});
+  const coloniesList = cityList;
+  const cityValue = c => buildingsValue(c) + c.pop * 250;
+  const subTaxF = s => { const rel = s.world.rel[s.key]; return (rel >= 45 ? 1 : rel >= 30 ? 0.7 : 0.4) * (s.nation ? NATION_TAX : 1); };
+  const ctryF = s => clamp(s.world.econ[s.key], 0.7, 1.3);
+  const cityPrice = (s, key) => Math.round((CITY_POP[key] || 5000) * 150 * (0.5 + nb(key).wealth / 60000) * clamp(s.world.econ[key], 0.7, 1.3) / 1000) * 1000;
+  const annexPrice = (s, key) => cityPrice(s, key) * NATION_PRICE;
+  function strHash(str) { let h = 7; for (let i = 0; i < str.length; i++) h = Math.imul(h, 31) + str.charCodeAt(i) | 0; return Math.abs(h); }
+  // A cidade de fora fica ligada ao jogo principal: usa o mesmo caixa e o mesmo mundo, mas nada disso vai para o save duplicado
+  function attachCity(main, c) {
+    const hid = (k, v) => Object.defineProperty(c, k, {value: v, enumerable: false, writable: true, configurable: true});
+    hid('parent', main); hid('world', main.world); hid('assets', {}); hid('market', {rate: BASE_RATE, prev: BASE_RATE});
+    Object.defineProperty(c, 'cash', {get() { return main.cash; }, set(v) { main.cash = v; }, enumerable: false, configurable: true});
+    return c;
   }
-  const colonyValue = c => (c.cost + c.invested) * 0.8;
-  const coloniesList = s => Object.values(s.colonies || {});
-  function colonyInfo(s, key) {
-    const c = (s.colonies || {})[key], w = s.world, n = nb(key), rel = w.rel[key];
-    const base = {key, name: n.name, icon: n.icon, rel, econ: w.econ[key], owned: !!c};
-    if (!c) {
-      const price = colonyPrice(s, key);
-      const why = s.pop < COLONY_MIN_POP ? `sua cidade precisa de ${COLONY_MIN_POP.toLocaleString('pt-BR')} habitantes` : rel < COLONY_MIN_REL ? `relação precisa passar de ${COLONY_MIN_REL}` : null;
-      return {...base, price, canBuy: !why, why, preview: Math.round(colonyScaleNow(s) * 0.004 * clamp(w.econ[key], 0.6, 1.4))};
+  // Monta uma cidade já pronta com a população do país, atendendo bem o povo
+  function genCity(c, target) {
+    const lvT = target < 2800 ? 1 : target < 5000 ? 2 : 3, add = k => { c.tiles.push(k); c.lv.push(lvT); };
+    const jobsMix = target < 5000 ? ['loja', 'mercado', 'fazenda', 'loja'] : ['mercado', 'tecnologia', 'mercado', 'fabrica', 'tecnologia'];
+    c.pop = target;
+    for (let it = 0; it < 3000; it++) {
+      const a = analyze(c);
+      if (a.housing < target * 1.05) { add(target > 2500 ? 'predio' : 'casa'); continue; }
+      if (a.workers > a.jobs * 0.95) { add(jobsMix[it % jobsMix.length]); continue; }
+      if (a.cov.edu < 0.9) { add(target > 9000 && it % 3 === 0 ? 'universidade' : 'escola'); continue; }
+      if (a.cov.health < 0.9) { add('hospital'); continue; }
+      if (a.cov.safety < 0.9) { add('policia'); continue; }
+      if (a.sum('fire') / Math.max(1, c.pop) < 0.4) { add('bombeiros'); continue; }
+      if (a.cov.park < 0.8) { add('parque'); continue; }
+      if (a.cov.power < 0.999) { add(it % 2 ? 'eolica' : 'solar'); continue; }
+      if (a.cov.water < 0.999) { add('agua'); continue; }
+      if (a.cov.sewage < 0.999) { add('esgoto'); continue; }
+      if (a.pollution >= 8) { add('filtro'); continue; }
+      break;
     }
-    const ap = annexPrice(s, key), awhy = c.nation ? null : s.pop < NATION_MIN_POP ? `sua cidade precisa de ${NATION_MIN_POP.toLocaleString('pt-BR')} habitantes` : c.level < NATION_MIN_LEVEL ? `a cidade lá precisa chegar ao nível ${NATION_MIN_LEVEL}` : rel < NATION_MIN_REL ? `relação precisa passar de ${NATION_MIN_REL}` : null;
-    return {...base, nation: !!c.nation, maxLevel: colMax(c), annexPrice: ap, canAnnex: !c.nation && !awhy, annexWhy: awhy, level: c.level, pop: colonyPop(c), net: colonyNet(s, c), upCost: c.level < colMax(c) ? colonyUpCost(c) : null, upMonths: colonyUpMonths(c), upgrading: c.up ? {...c.up} : null,
-      sellValue: Math.round(colonyValue(c) * 0.9), danger: rel < 35, trouble: c.bad || 0, invested: c.invested};
+    c.happy = 60;
   }
-  const annexPrice = (s, key) => Math.round(colonyScaleNow(s) * (0.5 + nb(key).wealth / 60000) * clamp(s.world.econ[key], 0.7, 1.3) * 4 / 1000) * 1000;
-  function annexColony(s, key) {
-    const c = (s.colonies || {})[key];
-    if (s.over) return {ok: false, msg: 'O jogo acabou.'};
-    if (!c) return {ok: false, msg: 'Compre uma cidade lá primeiro.'};
-    if (c.nation) return {ok: false, msg: 'O país já é seu.'};
-    const i = colonyInfo(s, key);
-    if (!i.canAnnex) return {ok: false, msg: 'Ainda não: ' + i.annexWhy + '.'};
-    if (s.cash < i.annexPrice) return {ok: false, msg: 'Dinheiro insuficiente.'};
-    s.cash -= i.annexPrice; c.cost += i.annexPrice; c.nation = true; c.bad = 0; c.up = null;
-    addRel(s, key, 10);
-    worldNote(s, `🚩 ${nb(key).name} agora é seu! O país inteiro passa a render para você.`);
-    return {ok: true, price: i.annexPrice};
+  function makeCity(main, key) {
+    const n = nb(key), c = {v: 1, isSub: true, key, cityName: n.name, icon: n.icon, seed: strHash(key) ^ (main.seed | 0), month: main.month, taxRate: 10, debt: 0,
+      tiles: ['prefeitura'], lv: [1], pop: 0, happy: 60, mods: {econ: 1, econLeft: 0, upkeep: 1, upkeepLeft: 0}, log: [], hist: [], histN: 0, staff: defaultStaff(),
+      staffStats: {errors: 0, cost: 0}, report: null, over: null, lowHappy: 0, netHist: [], nation: false, bad: 0, since: main.month, paid: 0};
+    attachCity(main, c);
+    genCity(c, CITY_POP[key] || 5000);
+    return c;
+  }
+  function colonyInfo(s, key) {
+    const c = (s.cities || {})[key], w = s.world, n = nb(key), rel = w.rel[key];
+    const base = {key, name: n.name, short: n.short, icon: n.icon, rel, econ: w.econ[key], owned: !!c};
+    if (!c) {
+      const why = s.pop < COLONY_MIN_POP ? `sua cidade precisa de ${COLONY_MIN_POP.toLocaleString('pt-BR')} habitantes` : rel < COLONY_MIN_REL ? `relação precisa passar de ${COLONY_MIN_REL}` : null;
+      return {...base, price: cityPrice(s, key), pop0: CITY_POP[key] || 5000, canBuy: !why, why};
+    }
+    const r = c.report, ap = annexPrice(s, key);
+    const awhy = c.nation ? null : s.pop < NATION_MIN_POP ? `sua cidade precisa de ${NATION_MIN_POP.toLocaleString('pt-BR')} habitantes` : c.pop < NATION_MIN_CITY ? `a cidade lá precisa de ${NATION_MIN_CITY.toLocaleString('pt-BR')} habitantes` : rel < NATION_MIN_REL ? `relação precisa passar de ${NATION_MIN_REL}` : null;
+    return {...base, nation: !!c.nation, pop: Math.floor(c.pop), happy: c.happy, net: r ? r.net : 0, income: r ? r.income : 0, expenses: r ? r.expenses : 0, annexPrice: ap, canAnnex: !c.nation && !awhy, annexWhy: awhy,
+      sellValue: Math.round(cityValue(c) * 0.85), danger: rel < 35, trouble: c.bad || 0, staff: SUB_ROLES.filter(k => hired(c, k)).length};
   }
   function buyColony(s, key) {
     if (s.over) return {ok: false, msg: 'O jogo acabou.'};
     if (!nb(key)) return {ok: false, msg: 'País inválido.'};
-    if (!s.colonies) s.colonies = {};
-    if (s.colonies[key]) return {ok: false, msg: 'Você já tem uma cidade lá.'};
+    if (!s.cities) s.cities = {};
+    if (s.cities[key]) return {ok: false, msg: 'Você já tem a cidade de lá.'};
     const i = colonyInfo(s, key);
     if (!i.canBuy) return {ok: false, msg: 'Ainda não: ' + i.why + '.'};
     if (s.cash < i.price) return {ok: false, msg: 'Dinheiro insuficiente.'};
     s.cash -= i.price;
-    s.colonies[key] = {key, scale: colonyScaleNow(s), level: 1, cost: i.price, invested: 0, since: s.month, up: null, bad: 0};
+    const c = makeCity(s, key); c.paid = i.price; s.cities[key] = c;
     addRel(s, key, 3);
-    note(s, `🏙️ Você comprou uma cidade em ${nb(key).name}!`);
+    note(s, `🏙️ Você comprou a cidade de ${nb(key).name} (${Math.floor(c.pop).toLocaleString('pt-BR')} habitantes)!`);
     return {ok: true, price: i.price};
   }
-  function upgradeColony(s, key) {
-    const c = (s.colonies || {})[key];
-    if (!c) return {ok: false, msg: 'Você não tem cidade lá.'};
-    if (c.up) return {ok: false, msg: 'Já está em obras.'};
-    if (c.level >= colMax(c)) return {ok: false, msg: 'Já está no nível máximo.'};
-    const cost = colonyUpCost(c);
-    if (s.cash < cost) return {ok: false, msg: 'Dinheiro insuficiente.'};
-    s.cash -= cost; c.invested += cost; c.up = {to: c.level + 1, left: colonyUpMonths(c), total: colonyUpMonths(c)};
-    return {ok: true, cost, months: c.up.total};
+  function annexColony(s, key) {
+    const c = (s.cities || {})[key];
+    if (s.over) return {ok: false, msg: 'O jogo acabou.'};
+    if (!c) return {ok: false, msg: 'Compre a cidade de lá primeiro.'};
+    if (c.nation) return {ok: false, msg: 'O país já é seu.'};
+    const i = colonyInfo(s, key);
+    if (!i.canAnnex) return {ok: false, msg: 'Ainda não: ' + i.annexWhy + '.'};
+    if (s.cash < i.annexPrice) return {ok: false, msg: 'Dinheiro insuficiente.'};
+    s.cash -= i.annexPrice; c.paid += i.annexPrice; c.nation = true; c.bad = 0;
+    addRel(s, key, 10);
+    worldNote(s, `🚩 ${nb(key).name} agora é seu! O país inteiro paga impostos a você.`);
+    return {ok: true, price: i.annexPrice};
   }
   function sellColony(s, key) {
-    const c = (s.colonies || {})[key];
-    if (!c) return {ok: false, msg: 'Você não tem cidade lá.'};
-    const v = Math.round(colonyValue(c) * 0.9); s.cash += v; delete s.colonies[key];
+    const c = (s.cities || {})[key];
+    if (!c) return {ok: false, msg: 'Você não tem a cidade de lá.'};
+    const v = Math.round(cityValue(c) * 0.85); s.cash += v; delete s.cities[key];
     note(s, `🏙️ Você vendeu a cidade de ${nb(key).name} por ${money(v)}.`);
     return {ok: true, value: v};
   }
-  // Renda mensal das filiais; relação muito ruim com o país põe a cidade em risco
-  function colonyStep(s) {
+  // Cada cidade de fora roda um mês inteiro; relação péssima com o país põe a cidade em risco
+  function citiesStep(s) {
     let net = 0;
-    coloniesList(s).forEach(c => {
-      if (c.up && --c.up.left <= 0) { c.level = c.up.to; c.up = null; note(s, `🏗️ A cidade de ${nb(c.key).name} chegou ao nível ${c.level}!`); }
-      net += colonyNet(s, c);
+    cityList(s).forEach(c => {
+      if (!c.parent) attachCity(s, c);
+      c.month = s.month - 1; step(c);
+      if (c.over) { c.over = null; c.lowHappy = 0; c.pop = Math.floor(c.pop * 0.92); note(c, '😡 A população está furiosa e a cidade entrou em crise!'); }
+      net += c.report ? c.report.net : 0;
       if (c.nation) { /* país seu: não pode ser tomado */ }
       else if (s.world.rel[c.key] < 25) {
         c.bad = (c.bad || 0) + 1;
         if (c.bad === 1) worldNote(s, `⚠️ ${nb(c.key).name} está furioso: sua cidade lá corre risco de ser tomada!`);
-        if (c.bad >= 5) { delete s.colonies[c.key]; worldNote(s, `🚫 ${nb(c.key).name} tomou a sua cidade! Você perdeu o investimento.`); }
+        if (c.bad >= 5) { delete s.cities[c.key]; worldNote(s, `🚫 ${nb(c.key).name} tomou a sua cidade! Você perdeu o investimento.`); }
       } else c.bad = 0;
     });
-    s.colonyNet = net; s.cash += net;
+    s.colonyNet = net;
   }
 
   // ---------- Profundidade do mercado: dinheiro demais num lugar só rende cada vez menos ----------
   // Evita a bola de neve dos bilhões: acima da "profundidade" de cada investimento, o ganho vai caindo.
   // Comprar cidades e países amplia o mercado e abre espaço para realocar o dinheiro.
   const DEPTH = {poupanca: 1.2e6, tesouro: 5e6, cdb: 8e6, cdb_b: 3e6, cdb_c: 2e6, cdb_d: 1.2e6, divid: 2.4e6, fii: 2.4e6, ouro: 2e6, etf: 5e6, dolar: 2e6, acoes: 1.6e6, cripto: 6e5, startup: 3e5};
-  const marketScale = s => 1 + coloniesList(s).reduce((t, c) => t + (c.nation ? 3 + 0.5 * c.level : 0.25 * c.level), 0);
+  const marketScale = s => 1 + cityList(s).reduce((t, c) => t + (c.nation ? 3 + c.pop / 8000 : 0.25 + c.pop / 16000), 0);
   function assetDepth(s, key) {
     const d = ASSETS.find(x => x.key === key);
-    if (d && d.country) { const c = (s.colonies || {})[d.country]; return 1.8e6 * Math.sqrt(nb(d.country).wealth / 50000) * marketScale(s) * (c ? (c.nation ? 6 : 2) : 1); }
+    if (d && d.country) { const c = (s.cities || {})[d.country]; return 1.8e6 * Math.sqrt(nb(d.country).wealth / 50000) * marketScale(s) * (c ? (c.nation ? 6 : 2) : 1); }
     return (DEPTH[key] || 2e6) * marketScale(s);
   }
   const liquidity = (s, key, pos) => 1 / (1 + Math.max(0, pos) / assetDepth(s, key));
@@ -525,6 +555,7 @@
   function hire(s, k) {
     if (s.over || !STAFF[k]) return {ok: false, msg: 'Funcionário inválido.'};
     if (hired(s, k)) return {ok: false, msg: 'Já contratado.'};
+    if (s.isSub && !SUB_ROLES.includes(k)) return {ok: false, msg: 'Esse cargo é só da capital.'};
     const why = lockReason(s, k);
     if (why) return {ok: false, msg: why + '.'};
     if (s.cash < STAFF[k].salary) return {ok: false, msg: 'Dinheiro insuficiente para o 1º salário.'};
@@ -692,7 +723,7 @@
   }
   const foreignDebt = s => NEIGHBORS.reduce((t, n) => t + (s.world.owed[n.key] || 0), 0);
   const lentValue = s => s.world.lent.reduce((t, l) => t + l.left * l.monthly, 0);
-  function netWorth(s) { return s.cash + holdingsValue(s) + buildingsValue(s) + lentValue(s) * 0.8 - s.debt - foreignDebt(s) + coloniesList(s).reduce((t, c) => t + colonyValue(c), 0); }
+  function netWorth(s) { return s.cash + holdingsValue(s) + buildingsValue(s) + lentValue(s) * 0.8 - s.debt - foreignDebt(s) + cityList(s).reduce((t, c) => t + cityValue(c), 0); }
 
   // Preço de uma obra: o Arquiteto consegue desconto para toda a cidade
   const buildCost = (s, type) => Math.round(BUILDINGS[type].cost * (1 - buildDiscount(s)) * priceF(s));
@@ -809,6 +840,7 @@
   function setTax(s, rate) { s.taxRate = clamp(Math.round(rate), 0, 20); }
 
   function note(s, text) {
+    if (s.isSub && s.parent) return note(s.parent, `${s.icon || '🏙️'} ${s.cityName}: ${text}`);
     s.log.unshift(`Mês ${s.month}: ${text}`); if (s.log.length > 80) s.log.pop();
     if (!s.hist) s.hist = [];
     s.hist.unshift({m: s.month, t: text}); if (s.hist.length > 600) s.hist.pop();
@@ -1028,13 +1060,14 @@
   function step(s) {
     if (s.over) return s;
     s.month++;
+    const sub = !!s.isSub;
     const a = analyze(s);
     const econ = s.mods.econLeft > 0 ? (s.mods.econ < 1 ? 1 - (1 - s.mods.econ) * (1 - econSoftener(s)) : s.mods.econ) : 1;
     const upk = (s.mods.upkeepLeft > 0 ? s.mods.upkeep : 1) * (s.world.mods.upkeepLeft > 0 ? s.world.mods.upkeep : 1);
     const power = 0.6 + 0.4 * a.cov.power;   // sem energia, as empresas rendem menos
     const trade = worldFactor(s) * 1;
 
-    const taxes = a.employed * 8 * (s.taxRate / 10) * (1 + taxBoost(s)) * FLOW;
+    const taxes = a.employed * 8 * (s.taxRate / 10) * (1 + taxBoost(s)) * FLOW * (sub ? subTaxF(s) : 1);
     let slots = 0;
     for (const k in a.u) { const b = BUILDINGS[k]; if (b && b.housing) slots += b.housing * (b.rent || 5) * a.u[k]; }
     const rent = (a.housing > 0 ? Math.min(1, s.pop / a.housing) * slots : 0) * FLOW;
@@ -1050,19 +1083,19 @@
     }
     const boom = 1 + 0.025 * pw(s, 'economista');
     let exports = 0;
-    NEIGHBORS.forEach(n => { if (s.world.treaty[n.key]) exports += s.world.econ[n.key] * (25 + 0.35 * s.pop) * (1 + 0.02 * pw(s, 'diplomata')); });
-    const income = (taxes + rent + commerce + industry + exports) * boom;
+    if (!sub) NEIGHBORS.forEach(n => { if (s.world.treaty[n.key]) exports += s.world.econ[n.key] * (25 + 0.35 * s.pop) * (1 + 0.02 * pw(s, 'diplomata')); });
+    const income = (taxes + rent + commerce + industry + exports) * boom * (sub ? ctryF(s) : 1);
     let kindUp = {'Serviço': 0, 'Público': 0, 'Ambiente': 0};
     for (const k in a.c) { const b = BUILDINGS[k]; if (b && kindUp[b.kind] != null) kindUp[b.kind] += upkeepTotal(k, a.c[k], a.uu[k]); }
     const kindCut = kindUp['Serviço'] * Math.min(0.5, 0.06 * pw(s, 'infra')) + kindUp['Público'] * Math.min(0.5, 0.05 * pw(s, 'social'))
       + kindUp['Ambiente'] * Math.min(0.5, 0.06 * pw(s, 'ambiental'));
     const maint = Math.max(0, (a.upkeep - kindCut) * upk * (1 - upkeepCut(s))) * FLOW * COST_HARD * pressure(s);
     const salaries = staffCost(s);
-    const diplomacy = treatyCount(s) * TREATY_UPKEEP;
+    const diplomacy = sub ? 0 : treatyCount(s) * TREATY_UPKEEP;
     let foreignInterest = 0;
-    NEIGHBORS.forEach(n => { foreignInterest += s.world.owed[n.key] * foreignRate(s, n.key); });
-    const interest = s.debt * loanRate(s) + foreignInterest;
-    const overdraft = s.cash < 0 ? -s.cash * overdraftRate(s) : 0;
+    if (!sub) NEIGHBORS.forEach(n => { foreignInterest += s.world.owed[n.key] * foreignRate(s, n.key); });
+    const interest = sub ? 0 : s.debt * loanRate(s) + foreignInterest;
+    const overdraft = !sub && s.cash < 0 ? -s.cash * overdraftRate(s) : 0;
     const basic = s.pop * BASIC_COST * (1 - upkeepCut(s)) * FLOW * COST_HARD * pressure(s);
     const expenses = maint + basic + salaries + diplomacy + interest + overdraft;
     s.cash += income - expenses;
@@ -1076,10 +1109,11 @@
     }
     if (s.pop > a.housing) s.pop = Math.max(a.housing, s.pop - Math.max(1, (s.pop - a.housing) * 0.3));
 
-    // Juros do país e mercado
+    // Juros do país e mercado (só a capital mexe com investimentos)
+    let dividends = 0, cashYield = 0;
+    if (!sub) {
     const m = s.market; m.prev = m.rate;
     m.rate = clamp(m.rate + (BASE_RATE - m.rate) * 0.08 + 0.0004 * gauss(s), MIN_RATE, MAX_RATE);
-    let dividends = 0;
     ASSETS.forEach(d => {
       const x = s.assets[d.key], y = assetYield(s, d.key);
       const liq = liquidity(s, d.key, x.units * x.price), gr = y.growth > 0 ? y.growth * liq : y.growth;
@@ -1094,9 +1128,10 @@
       if (d.div && x.units > 0) dividends += x.units * x.price * d.div * liq;
     });
     // O Gerente Financeiro faz o caixa parado render
-    const idle = Math.max(0, s.cash - reserve(s, a)), cashYield = idle * 0.0012 * pw(s, 'gerente') * cashLiquidity(s, idle);
+    const idle = Math.max(0, s.cash - reserve(s, a)); cashYield = idle * 0.0012 * pw(s, 'gerente') * cashLiquidity(s, idle);
     dividends += cashYield;
     s.cash += dividends;
+    }
     if (s.mods.econLeft > 0) s.mods.econLeft--;
     if (s.mods.upkeepLeft > 0) s.mods.upkeepLeft--;
 
@@ -1106,13 +1141,12 @@
       let r = mulberry(s) * ws.reduce((t, w) => t + w, 0);
       for (let i = 0; i < EVENTS.length; i++) { if ((r -= ws[i]) < 0) { EVENTS[i].run(s); break; } }
     }
-    worldStep(s);
-    trainingStep(s); perfStep(s); offerStep(s); colonyStep(s);
+    if (!sub) { worldStep(s); trainingStep(s); perfStep(s); offerStep(s); citiesStep(s); }
 
     staffActs(s, s.month % 2 === 1);   // a equipe decide a cada 2 meses (só emergências todo mês)
 
     // Banco cobre o rombo vendendo investimentos
-    if (s.cash < 0) {
+    if (!sub && s.cash < 0) {
       for (const d of ASSETS.slice().reverse()) {
         const x = s.assets[d.key];
         if (s.cash >= 0) break;
@@ -1125,11 +1159,12 @@
     }
 
     s.report = {taxes, rent, commerce, industry, exports, cashYield, dividends, income, maint, basic, salaries, diplomacy, interest, overdraft, expenses, colonies: s.colonyNet || 0, net: income + dividends + (s.colonyNet || 0) - expenses};
-    s.netHist.push(netWorth(s)); if (s.netHist.length > 48) s.netHist.shift();
+    if (!sub) { s.netHist.push(netWorth(s)); if (s.netHist.length > 48) s.netHist.shift(); }
 
 
 
     s.lowHappy = s.pop > 0 && s.happy < 15 ? s.lowHappy + 1 : 0;
+    if (sub) { if (s.lowHappy >= 6) s.over = {title: 'Revolta popular!', text: 'revolta'}; return s; }
     if (s.cash < -OVERDRAFT_LIMIT) s.over = {title: 'Falência!', text: 'A prefeitura quebrou: dívidas demais e nenhum caixa.'};
     else if (s.lowHappy >= 6) s.over = {title: 'Revolta popular!', text: 'Os moradores estão infelizes demais e derrubaram você.'};
     if (s.over) s.over.score = Math.round(netWorth(s));
@@ -1159,7 +1194,8 @@
     let got = 0;
     for (const k of SAFE_ASSETS.slice().reverse()) {
       if (got >= need) break;
-      const x = s.assets[k], v = x.units * x.price;
+      const x = s.assets[k]; if (!x) continue;
+      const v = x.units * x.price;
       if (v <= 0) continue;
       const before = s.cash; sell(s, k, Math.min(need - got, v)); got += s.cash - before;
     }
@@ -1260,7 +1296,7 @@
     if (!active(s, who) || L < 3 || s.month % 6 !== 1) return;
     const a = analyze(s);
     const want = pick(s, a, L);                                 // o que a cidade está pedindo: se der, reforma esse tipo
-    const maxTo = 1 + Math.floor(L / 3);                        // nível 3 do funcionário libera o nível 2 dos prédios; 6, o nível 3
+    const maxTo = s.isSub ? 3 : 1 + Math.floor(L / 3);                        // nível 3 do funcionário libera o nível 2 dos prédios; 6, o nível 3
     let best = null;
     EVOLVERS[who].forEach(k => {
       const i = evolveInfo(s, k);
@@ -1316,6 +1352,7 @@
 
   function staffActs(s, full) {
     if (full == null) full = true;
+    if (s.isSub) { if (full) builderRound(s); return; }
     if (!s.staffStats) s.staffStats = {errors: 0, cost: 0};
 
     // ===== Finanças =====
@@ -1457,10 +1494,15 @@
     }
 
     // ===== Construção: cada um cuida da sua área =====
-    builderActs(s, 'arquiteto', pickCity, maxBuilds(s), 3500 + 1000 * lv(s, 'arquiteto'));
-    builderActs(s, 'infra', pickInfra, 1 + (lv(s, 'infra') >= 5 ? 1 : 0), 3500 + 1000 * lv(s, 'infra'));
-    builderActs(s, 'ambiental', pickGreen, 1, 3000 + 600 * lv(s, 'ambiental'));
-    builderActs(s, 'social', pickSocial, 1 + (lv(s, 'social') >= 5 ? 1 : 0), 4000 + 1000 * lv(s, 'social'));
+    builderRound(s);
+  }
+  // Rodada dos construtores (na capital seguem o nível; nas cidades de fora cada um dá conta do tamanho da cidade)
+  function builderRound(s) {
+    const sub = s.isSub, ex = sub ? Math.floor(s.pop / 10000) : 0, big = sub ? 1e12 : 0;
+    builderActs(s, 'arquiteto', pickCity, maxBuilds(s), big || 3500 + 1000 * lv(s, 'arquiteto'));
+    builderActs(s, 'infra', pickInfra, 1 + ex + (lv(s, 'infra') >= 5 ? 1 : 0), big || 3500 + 1000 * lv(s, 'infra'));
+    builderActs(s, 'ambiental', pickGreen, 1 + ex, big || 3000 + 600 * lv(s, 'ambiental'));
+    builderActs(s, 'social', pickSocial, 1 + ex + (lv(s, 'social') >= 5 ? 1 : 0), big || 4000 + 1000 * lv(s, 'social'));
     builderEvolves(s, 'arquiteto', pickCity); builderEvolves(s, 'infra', pickInfra); builderEvolves(s, 'ambiental', pickGreen); builderEvolves(s, 'social', pickSocial);
   }
 
@@ -1487,7 +1529,10 @@
       NEIGHBORS.forEach(n => { const w = s.world; if (w.econ[n.key] == null) { w.econ[n.key] = 1; w.rel[n.key] = 50; w.treaty[n.key] = false; w.owed[n.key] = 0; w.giftCd[n.key] = 0; } });
       if (!s.market) s.market = {rate: BASE_RATE, prev: BASE_RATE};
       if (!s.lv) s.lv = [];
-      if (!s.colonies) s.colonies = {};
+      if (!s.cities) s.cities = {};
+      // saves antigos: as filiais abstratas viram cidades de verdade
+      if (s.colonies) { Object.values(s.colonies).forEach(o => { if (nb(o.key) && !s.cities[o.key]) { const c = makeCity(s, o.key); c.nation = !!o.nation; c.paid = o.cost || 0; s.cities[o.key] = c; } }); delete s.colonies; }
+      Object.values(s.cities).forEach(c => { attachCity(s, c); STAFF_ORDER.forEach(k => { if (!c.staff[k]) c.staff[k] = {hired: false, auto: true, level: 1}; }); });
       if (s.offer === undefined) s.offer = null;
       if (!s.hist) s.hist = s.log.map(l => { const m = /^Mês (\d+): (.*)$/.exec(l); return m ? {m: +m[1], t: m[2]} : {m: s.month, t: l}; });
       if (s.histN == null) s.histN = 0;
@@ -1496,7 +1541,7 @@
   }
 
   return {COLS, ROWS: START_ROWS, HALL, BUILDINGS, ASSETS, SAFE_ASSETS, RISKY_ASSETS, FIXED_ASSETS, BASE_RATE, assetYield, STAFF, STAFF_ORDER, SALARY_ORDER, AREAS, MAX_LEVEL, NEIGHBORS,
-    hired, active, levelOf, isUnlocked, lockReason, readiness, hireWarnings, DIFFICULTY, COST_HARD, EVENT_HARD, PUBLIC_ESC, isPublic, upkeepInfo, publicCosts, pressure, priceF, sizeF, phaseOf, PHASES, staffCost, salaryOf, efficiency, errorChance, staffInfo, upgrade, train, trainMonths, motivate, answerOffer, offerSalary, starsOf, PERF_WARN, colonyInfo, buyColony, annexColony, assetLiquidity, assetDepth, marketScale, NATION_MIN_POP, NATION_MIN_REL, NATION_MIN_LEVEL, NATION_MAX, upgradeColony, sellColony, coloniesList, COLONY_MIN_POP, COLONY_MIN_REL, COL_MAX, upgradeCost, teamBonus,
+    hired, active, levelOf, isUnlocked, lockReason, readiness, hireWarnings, DIFFICULTY, COST_HARD, EVENT_HARD, PUBLIC_ESC, isPublic, upkeepInfo, publicCosts, pressure, priceF, sizeF, phaseOf, PHASES, staffCost, salaryOf, efficiency, errorChance, staffInfo, upgrade, train, trainMonths, motivate, answerOffer, offerSalary, starsOf, PERF_WARN, colonyInfo, buyColony, annexColony, SUB_ROLES, salaryFlat: k => salaryAt(k, FLAT_LEVEL), CITY_POP, FLAT_LEVEL, cityPrice, assetLiquidity, assetDepth, marketScale, NATION_MIN_POP, NATION_MIN_REL, NATION_MIN_CITY, sellColony, coloniesList, cityList, COLONY_MIN_POP, COLONY_MIN_REL, upgradeCost, teamBonus,
     loanRate, loanLimit, hire, fire, setAuto, recommend, recCity, recInfra, recGreen, recSocial, needs, advice, hint,
     picks: {city: pickCity, infra: pickInfra, green: pickGreen, social: pickSocial, asset: pickAsset, group: bestGroup}, TARGETS, freeTiles, buildCost, SKILLS, LOT_SIZE, GIFT_COST, TREATY_COST, TREATY_UPKEEP, FLOW, WORLD_ASSETS, LOAN_LIMIT, OVERDRAFT_LIMIT,
     worldInfo, worldFactor, gift, signTreaty, cancelTreaty, borrowForeign, repayForeign, answerRequest, answerDilemma, foreignDebt, lentValue, foreignRate, foreignLimit,

@@ -2,7 +2,7 @@
   const SAVE = 'cidadecapital-save-v1';
   const $ = id => document.getElementById(id);
   const M = Sim.money;
-  let s, tab = 'city', speed = 1, amount = 1000, timer = null, tickMs = 5000, sinceTick = 0, histFilter = 'all', mapFocus = 'capital';
+  let s, tab = 'city', speed = 1, amount = 1000, timer = null, tickMs = 5000, sinceTick = 0, histFilter = 'all', mapFocus = 'capital', base = null, cityKey = null;
 
   const TAGS = {
     casa: 'Moradia', predio: 'Muita moradia', loja: 'Empregos e lucro', fabrica: 'Empregos, mas suja',
@@ -29,7 +29,7 @@
 
   const SEEN = 'cidadecapital-seen', MAX_AWAY_MONTHS = 480;
   function markSeen() { try { localStorage.setItem(SEEN, JSON.stringify({t: Date.now(), speed})); } catch (e) {} }
-  function save() { try { localStorage.setItem(SAVE, Sim.serialize(s)); } catch (e) {} markSeen(); }
+  function save() { try { localStorage.setItem(SAVE, Sim.serialize(base || s)); } catch (e) {} markSeen(); }
   function loadGame() {
     try { const g = Sim.load(localStorage.getItem(SAVE)); if (g) return g; } catch (e) {}
     return Sim.newGame();
@@ -190,6 +190,32 @@
   }
 
   const BUILDERS = ['arquiteto', 'infra', 'ambiental', 'social'];
+  function citySelector() {
+    const owned = Sim.cityList(base); if (!owned.length) return '';
+    const chips = [['capital', '🏠 Capital'], ...owned.map(c => [c.key, `${c.icon} ${Sim.NEIGHBORS.find(n => n.key === c.key).short}${c.nation ? ' 🚩' : ''}`])]
+      .map(([k, l]) => `<button class="chip ${(k === 'capital' ? !cityKey : k === cityKey) ? 'on' : ''}" data-city="${k}">${l}</button>`).join('');
+    return `<div class="chips mapchips">${chips}</div>`;
+  }
+  // Administração da cidade de fora: lucro, imposto e administradores sem nível
+  function subPanel() {
+    if (!s.isSub) return '';
+    const info = Sim.colonyInfo(base, s.key), r = s.report;
+    const rows = Sim.SUB_ROLES.map(k => {
+      const f = Sim.STAFF[k], on = Sim.hired(s, k), inf = on ? Sim.staffInfo(s, k) : null, auto = on && Sim.active(s, k);
+      return `<div class="adm ${on ? 'on' : ''}"><div class="top"><span class="ico">${f.icon}</span><div class="nm">${f.name}<small>${on ? M(inf.salary) + ' por mês' : M(Sim.salaryFlat(k)) + ' por mês'}</small></div></div>
+        <div class="mut" style="font-size:12px;margin:4px 0">${f.desc}</div>${on ? `<div class="perks">${inf.lines.map(l => `<span>${l}</span>`).join('')}</div>` : ''}
+        <div class="btns">${on ? `<button class="btn ${auto ? '' : 'sec'}" data-auto="${k}">${auto ? '🤖 Automático' : '🤖 Desligado'}</button><button class="btn red" data-fire="${k}" style="flex:0 0 auto">Demitir</button>`
+          : `<button class="btn" data-hire="${k}" ${base.cash < Sim.salaryFlat(k) ? 'disabled' : ''}>Contratar</button>`}</div></div>`;
+    }).join('');
+    return `<div class="card staffnote"><h3>🌍 Administrando ${s.icon} ${s.cityName}${s.nation ? ' 🚩' : ''}</h3>
+        <div class="row"><span>👥 Habitantes</span><b>${Math.floor(s.pop).toLocaleString('pt-BR')}</b></div>
+        <div class="row"><span>${face(s.happy)} Felicidade</span><b>${Math.round(s.happy)}%</b></div>
+        ${r ? `<div class="row"><span>💰 Receita</span><b class="pos">+${M(Math.round(r.income))}</b></div><div class="row"><span>🧾 Custos</span><b class="neg">-${M(Math.round(r.expenses))}</b></div><div class="row"><span>Lucro por mês</span><b class="${cls(r.net)}">${sign(Math.round(r.net))}</b></div>` : '<div class="mut">Passe um mês para ver o lucro.</div>'}
+        ${info.danger ? `<div class="supline bad">⚠️ A relação com ${s.cityName} está ruim: a renda caiu e podem tomar a cidade. Mande presentes na aba Mundo!</div>` : ''}
+        <div class="mut" style="font-size:13px;margin-top:6px">O dinheiro é um só: o lucro cai no seu caixa e as obras saem dele.</div></div>
+      <div class="card"><h3>🏛️ Imposto da cidade</h3><div class="stepper"><button data-tax="-1">−</button><b>${s.taxRate}%</b><button data-tax="1">+</button></div></div>
+      <div class="card"><h3>👔 Administradores</h3><div class="mut" style="font-size:13px;margin-bottom:8px">Aqui ninguém tem nível: eles dão conta de uma cidade de qualquer tamanho. Só cuidam da cidade (obras, serviços, meio ambiente, finanças locais).</div><div class="admlist">${rows}</div></div>`;
+  }
   function viewCity() {
     const a = Sim.analyze(s), t = tip(a), c = a.c;
     const kinds = Object.keys(c).filter(k => k !== 'prefeitura' && Sim.BUILDINGS[k]);
@@ -215,7 +241,8 @@
       <div class="row"><span>💼 Vagas livres</span><b>${num(free)}</b></div>
       <div class="eff"><i><b style="width:${work ? Math.round(emp / work * 100) : 100}%;background:${unemp ? 'var(--warn)' : 'var(--ok)'}"></b></i></div>
       <div class="mut" style="font-size:12px">${num(a.jobs)} empregos no total · ${work ? Math.round(emp / work * 100) : 100}% de quem pode trabalhar está empregado</div></div>`;
-    return `<div class="cityview"><div class="side">
+    return `${citySelector()}<div class="cityview"><div class="side">
+      ${subPanel()}
       ${people}
       ${phase}
       ${t ? `<div class="tip"><span class="ico">${t[0]}</span><span>${t[1]}</span></div>` : '<div class="quiet">📰 Nenhuma reclamação por enquanto.</div>'}
@@ -416,18 +443,16 @@
           <button class="btn" data-fborrow="${n.key}" ${i.rel < 40 || ask < 500 ? 'disabled' : ''}>🏦 Pedir ${M(Math.max(0, ask))}<small>${i.rel < 40 ? 'eles não confiam em você' : 'juros de ' + (i.rate * 100).toFixed(1).replace('.', ',') + '% ao mês'}</small></button>
           ${i.owed > 0 ? `<button class="btn sec" data-frepay="${n.key}">💸 Pagar dívida</button>` : ''}
         </div>
-        ${(() => { const c = Sim.colonyInfo(s, n.key); return c.owned ? '<div class="perks"><span class="okchip">🏙️ Você tem uma cidade aqui</span></div>' : `<div class="btns"><button class="btn sec" data-cbuy="${n.key}" ${!c.canBuy || s.cash < c.price ? 'disabled' : ''}>🏙️ Comprar uma cidade aqui · ${M(c.price)}<small>${c.why ? c.why : `renderia ~${M(c.preview)}/mês no início, cresce com investimento`}</small></button></div>`; })()}
+        ${(() => { const c = Sim.colonyInfo(s, n.key); return c.owned ? '<div class="perks"><span class="okchip">🏙️ Você tem uma cidade aqui</span></div>' : `<div class="btns"><button class="btn sec" data-cbuy="${n.key}" ${!c.canBuy || s.cash < c.price ? 'disabled' : ''}>🏙️ Comprar a cidade (${c.pop0.toLocaleString('pt-BR')} habitantes) · ${M(c.price)}<small>${c.why ? c.why : 'já pronta: você administra com seus próprios administradores'}</small></button></div>`; })()}
       </div>`;
     }).join('');
-    const cityRows = Sim.NEIGHBORS.map(n => Sim.colonyInfo(s, n.key));
-    const mine = cityRows.filter(i => i.owned), colNet = mine.reduce((t, i) => t + i.net, 0);
-    const myCities = mine.length ? `<div class="card"><h3>🏙️ Minhas cidades no exterior (${mine.length})</h3><div class="big pos">+${M(Math.round(colNet))}</div><div class="mut" style="text-align:center">por mês, já no seu caixa</div>
-      ${mine.map(i => `<div class="colony ${i.danger ? 'danger' : ''}"><div class="top"><span class="ico">${i.icon}</span><div class="nm">${i.name} ${i.nation ? '🚩' : ''}<small>${i.nation ? 'País inteiro · ' : ''}Nível ${i.level}/${i.maxLevel} · ${i.pop.toLocaleString('pt-BR')} habitantes</small></div><div class="val pos">+${M(Math.round(i.net))}<small>por mês</small></div></div>
+    const mine = Sim.NEIGHBORS.map(n => Sim.colonyInfo(s, n.key)).filter(i => i.owned), colNet = mine.reduce((tt, i) => tt + i.net, 0);
+    const myCities = mine.length ? `<div class="card"><h3>🏙️ Minhas cidades no exterior (${mine.length})</h3><div class="big ${cls(colNet)}">${sign(Math.round(colNet))}</div><div class="mut" style="text-align:center">de lucro por mês, já no seu caixa</div>
+      ${mine.map(i => `<div class="colony ${i.danger ? 'danger' : ''}"><div class="top"><span class="ico">${i.icon}</span><div class="nm">${i.name} ${i.nation ? '🚩' : ''}<small>${i.pop.toLocaleString('pt-BR')} habitantes · ${face(i.happy)} · ${i.staff}/${Sim.SUB_ROLES.length} administradores</small></div><div class="val ${cls(i.net)}">${sign(Math.round(i.net))}<small>por mês</small></div></div>
         ${i.danger ? `<div class="supline bad">⚠️ A relação com ${i.name} está ruim${i.trouble ? ` (${i.trouble}/5 meses de risco)` : ''}: a renda caiu e eles podem tomar a cidade. Mande presentes!</div>` : ''}
-        ${i.upgrading ? `<div class="training"><div class="effhead">🏗️ Crescendo para o nível ${i.upgrading.to}…</div><i><b style="width:${Math.round((1 - i.upgrading.left / i.upgrading.total) * 100)}%;background:var(--acc)"></b></i><small class="mut">faltam ${i.upgrading.left} meses</small></div>` : ''}
-        <div class="btns">${i.upCost == null ? '<button class="btn sec" disabled>⭐ Nível máximo</button>' : `<button class="btn" data-cup="${i.key}" ${i.upgrading || s.cash < i.upCost ? 'disabled' : ''}>🏗️ Investir na cidade<small>${M(i.upCost)} · leva ${i.upMonths} meses · mais renda e gente</small></button>`}
+        <div class="btns"><button class="btn" data-gocity="${i.key}">🛠️ Administrar</button>
         <button class="btn sec" data-csell="${i.key}" style="flex:0 0 auto">Vender<small>${M(i.sellValue)}</small></button></div>
-        ${i.nation ? '<div class="perks"><span class="okchip">🚩 Você governa o país: ele rende 3× e ninguém toma</span></div>' : `<div class="btns"><button class="btn sec" data-annex="${i.key}" ${!i.canAnnex || s.cash < i.annexPrice ? 'disabled' : ''}>🚩 Comprar o país inteiro · ${M(i.annexPrice)}<small>${i.annexWhy ? i.annexWhy : 'rende 3×, amplia muito a bolsa dele e ninguém toma'}</small></button></div>`}</div>`).join('')}</div>` : '';
+        ${i.nation ? '<div class="perks"><span class="okchip">🚩 Você governa o país: ele paga mais imposto e ninguém toma a cidade</span></div>' : `<div class="btns"><button class="btn sec" data-annex="${i.key}" ${!i.canAnnex || s.cash < i.annexPrice ? 'disabled' : ''}>🚩 Comprar o país inteiro · ${M(i.annexPrice)}<small>${i.annexWhy ? i.annexWhy : '+50% de imposto, amplia muito a bolsa dele e ninguém toma'}</small></button></div>`}</div>`).join('')}</div>` : '';
     const lent = w.lent.length ? `<div class="card"><h3>🤝 Empréstimos que você fez</h3>${w.lent.map(l => {
       const n = Sim.NEIGHBORS.find(x => x.key === l.who);
       return `<div class="row"><span>${n.icon} ${n.name}</span><span>${l.left}x de ${M(l.monthly)}</span></div>`;
@@ -445,12 +470,20 @@
       <div class="btns"><button class="btn red" id="newgame">Recomeçar jogo</button></div>`;
   }
 
+  // Mostra/mexe na cidade de fora selecionada (o dinheiro é o mesmo da capital)
+  function withCity(fn) {
+    const c = cityKey && base.cities && base.cities[cityKey];
+    if (!c) return fn();
+    const prev = s; s = c;
+    try { return fn(); } finally { s = prev; }
+  }
   function render() {
+    s = base;
     header();
     document.querySelectorAll('#tabs button').forEach(b => { b.classList.toggle('on', b.dataset.tab === tab); if (b.dataset.tab === 'world') b.classList.toggle('alert', !!(s.world.request || s.world.dilemma) && !propRef); if (b.dataset.tab === 'team') b.classList.toggle('alert', Sim.STAFF_ORDER.some(k => Sim.hired(s, k) && Sim.staffInfo(s, k).perfWarn) || !!(s.offer && !propRef)); });
     if (tab === 'map' && $('map3d')) { renderProp(); if (window.City3D) City3D.show(s, mapFocus); return; }
     const keep = $('view').scrollTop;
-    $('view').innerHTML = {city: viewCity, map: viewMap, invest: viewInvest, fin: viewFin, world: viewWorld, team: viewTeam, news: viewNews}[tab]();
+    $('view').innerHTML = {city: () => withCity(viewCity), map: viewMap, invest: viewInvest, fin: viewFin, world: viewWorld, team: viewTeam, news: viewNews}[tab]();
     $('view').scrollTop = keep;
     renderProp();
     if (tab === 'map' && window.City3D) City3D.show(s, mapFocus);
@@ -463,10 +496,16 @@
     $('over').classList.remove('hidden');
   }
   function newGame() {
-    s = Sim.newGame(); save(); $('over').classList.add('hidden'); tab = 'city'; render(); setSpeed(1);
+    s = base = Sim.newGame(); cityKey = null; save(); $('over').classList.add('hidden'); tab = 'city'; render(); setSpeed(1);
   }
 
+  const SCOPED = ['build', 'demo', 'evolve', 'tax', 'hire', 'fire', 'auto'];
   function onButton(t) {
+    if (tab === 'city' && cityKey && base.cities && base.cities[cityKey] && SCOPED.some(k => t.dataset[k] != null)) return withCity(() => onButtonInner(t));
+    return onButtonInner(t);
+  }
+  function afterAct() { const cur = s; s = base; save(); render(); s = cur; }
+  function onButtonInner(t) {
     const d = t.dataset;
     let r;
     if (t.id === 'awayok') { $('away').classList.add('hidden'); setSpeed(resumeSpeed); return; }
@@ -474,6 +513,8 @@
     if (t.id === 'newgame') { if (confirm('Apagar a cidade e recomeçar?')) newGame(); return; }
     if (t.id === 'histbtn') return showHist();
     if (t.id === 'histclose') { $('hist').classList.add('hidden'); return; }
+    if (d.city) { cityKey = d.city === 'capital' ? null : d.city; render(); $('view').scrollTop = 0; return; }
+    if (d.gocity) { cityKey = d.gocity; tab = 'city'; render(); $('view').scrollTop = 0; return; }
     if (d.mapf) { mapFocus = d.mapf; $('view').innerHTML = viewMap(); if (window.City3D) City3D.show(s, mapFocus); return; }
     if (d.hf) { histFilter = d.hf; return showHist(); }
     if (d.tab) { tab = d.tab; if (tab !== 'map' && window.City3D) City3D.hide(); render(); $('view').scrollTop = 0; return; }
@@ -499,7 +540,6 @@
     else if (d.offer != null) { r = Sim.answerOffer(s, d.offer === '1'); }
     else if (d.cbuy) { r = Sim.buyColony(s, d.cbuy); if (r.ok) toast('🏙️ Cidade comprada!'); }
     else if (d.annex) { if (!confirm('Comprar o país inteiro?')) return; r = Sim.annexColony(s, d.annex); if (r.ok) toast('🚩 País comprado!'); }
-    else if (d.cup) { r = Sim.upgradeColony(s, d.cup); if (r.ok) toast('🏗️ Obras começaram: ' + r.months + ' meses.'); }
     else if (d.csell) { if (!confirm('Vender essa cidade?')) return; r = Sim.sellColony(s, d.csell); if (r.ok) toast('Cidade vendida.'); }
     else if (d.req != null) { r = Sim.answerRequest(s, d.req === '1'); }
     else if (d.dil != null) { r = Sim.answerDilemma(s, +d.dil); }
@@ -507,7 +547,7 @@
     else if (d.pay) r = Sim.repay(s, d.pay === 'all' ? s.debt : +d.pay);
     else return;
     if (r && !r.ok) toast(r.msg);
-    save(); render();
+    afterAct();
     return r;
   }
   let suppressClick = 0;
@@ -582,7 +622,7 @@
   document.addEventListener('visibilitychange', () => { if (document.hidden) { clearInterval(timer); save(); } else comeBack(); });
   window.addEventListener('pagehide', () => { save(); });
 
-  s = loadGame();
+  s = base = loadGame();
   window.__game = {get s() { return s; }, tick, setSpeed, catchUp, comeBack};
   render();
   if (s.over) showOver();

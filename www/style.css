@@ -187,3 +187,7 @@ nav button{font-size:20px}
 .colony .val{margin-left:auto;text-align:right;font-weight:800;font-size:15px}.colony .val small{display:block;font-size:11px;color:var(--mut);font-weight:400}
 
 .mapchips{overflow-x:auto;margin-bottom:6px;flex:0 0 auto;-webkit-overflow-scrolling:touch}.mapchips .chip{flex:0 0 auto;padding:8px 14px;font-size:14px;white-space:nowrap}
+
+.adm{background:#0b121a;border-radius:14px;padding:10px 12px;margin-bottom:8px}.adm.on{outline:1px solid #2b6a4a}
+.adm .top{display:flex;gap:10px;align-items:center}.adm .ico{font-size:26px}.adm .nm{font-size:15px;font-weight:700}.adm .nm small{display:block;font-weight:400;color:var(--mut);font-size:12px}
+.admlist{display:flex;flex-direction:column}

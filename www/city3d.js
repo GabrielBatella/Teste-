@@ -380,10 +380,9 @@
         items.t.push([x + 0.2, 0.2, z - 0.15, 0.2, 0.4, 0.2, 0x2f7d3a, 0, 0]); emit(items, 'casa', 1, i, x + 0.05, z + 0.25, 0.3, 0.18);
         return;
       }
-      const r = info.nation ? 1.9 : 1.2;
+      const sc = sim.cities[n.key], r = (info.nation ? 1.7 : 1.1) + Math.min(0.7, info.pop / 30000);
       island(x, z, r, 0xe7d9a8, info.nation ? 0x6aa84f : 0x5d9c4a);
-      const c = synthCity({key: n.key, level: info.level, nation: info.nation});
-      mini(c.tiles, c.lv, x, z, 0.34, 0.26, info.nation ? 70 : 24);
+      mini(sc.tiles, sc.lv, x, z, 0.34, 0.26, info.nation ? 80 : 45);
       flag(x, z + r * 0.78, info.nation ? 0.75 : 0.5, info.nation ? 0xf4b942 : 0x3d85c6);
     });
     buildMeshes(items);
@@ -598,13 +597,13 @@
       if (focus !== 'capital' && focus !== 'world') { info = S.colonyInfo(s, focus); if (!info.owned) focus = 'capital'; }
       let next;
       if (focus === 'capital') next = 'c|' + s.tiles.join(',') + '|' + (s.lv || []).join('') + '|' + Math.round(S.analyze(s).pollution / 3);
-      else if (focus === 'world') next = 'w|' + s.tiles.filter(Boolean).length + '|' + Math.round(Math.log10(1 + s.pop) * 4) + '|' + S.NEIGHBORS.map(n => { const i = S.colonyInfo(s, n.key); return i.owned ? i.level + (i.nation ? 'N' : 'c') : '-'; }).join('');
-      else next = 'k|' + focus + '|' + info.level + '|' + info.nation;
+      else if (focus === 'world') next = 'w|' + s.tiles.filter(Boolean).length + '|' + Math.round(Math.log10(1 + s.pop) * 4) + '|' + S.NEIGHBORS.map(n => { const i = S.colonyInfo(s, n.key); return i.owned ? Math.round(Math.log10(1 + i.pop) * 4) + (i.nation ? 'N' : 'c') : '-'; }).join('');
+      else next = 'k|' + focus + '|' + s.cities[focus].tiles.length + '|' + s.cities[focus].lv.join('') + '|' + info.nation;
       if (focus !== focusNow) { focusNow = focus; view.touched = false; sig = ''; }
       state = focus === 'capital' ? S.analyze(s) : null;
       if (next !== sig) {
         sig = next;
-        if (focus === 'capital') rebuild(s); else if (focus === 'world') rebuildWorld(s); else rebuild(synthCity({key: focus, level: info.level, nation: info.nation}));
+        if (focus === 'capital') rebuild(s); else if (focus === 'world') rebuildWorld(s); else rebuild(s.cities[focus]);
         applySky();
       }
       resize(); dirty = true; schedule();
