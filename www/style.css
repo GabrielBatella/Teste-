@@ -191,3 +191,12 @@ nav button{font-size:20px}
 .adm{background:#0b121a;border-radius:14px;padding:10px 12px;margin-bottom:8px}.adm.on{outline:1px solid #2b6a4a}
 .adm .top{display:flex;gap:10px;align-items:center}.adm .ico{font-size:26px}.adm .nm{font-size:15px;font-weight:700}.adm .nm small{display:block;font-weight:400;color:var(--mut);font-size:12px}
 .admlist{display:flex;flex-direction:column}
+
+/* mapa em tela cheia, sem textos */
+main.mapmode{padding:0;overflow:hidden}
+main.mapmode .mapwrap{position:relative;height:100%;gap:0}
+main.mapmode #map3d{height:100%;border-radius:0}
+.mapsw{position:absolute;top:10px;left:10px;display:flex;gap:8px;flex-wrap:wrap;max-width:calc(100% - 20px);z-index:3}
+.mapbtn{width:40px;height:40px;border-radius:50%;border:0;background:rgba(10,18,28,.38);color:#fff;font-size:20px;padding:0;backdrop-filter:blur(2px)}
+.mapbtn.on{background:rgba(76,201,240,.55)}
+body.maptab #toast{display:none!important}

@@ -263,15 +263,13 @@
       </div></div><div class="builds">${coverageCard()}${groups}</div></div>`;
   }
 
+  // Mapa: só a cidade, sem textos. Apenas botões de ícone no canto para trocar de cidade.
   function viewMap() {
     const owned = Sim.NEIGHBORS.map(n => Sim.colonyInfo(s, n.key)).filter(i => i.owned);
     if (mapFocus !== 'capital' && mapFocus !== 'world' && !owned.some(i => i.key === mapFocus)) mapFocus = 'capital';
-    const chips = [['capital', '🏠 Minha cidade'], ['world', '🌍 Mundo'], ...owned.map(i => [i.key, `${i.icon} ${Sim.NEIGHBORS.find(n => n.key === i.key).short}${i.nation ? ' 🚩' : ''}`])]
-      .map(([k, label]) => `<button class="chip ${k === mapFocus ? 'on' : ''}" data-mapf="${k}">${label}</button>`).join('');
-    return `<div class="mapwrap"><div class="chips mapchips">${chips}</div><div id="map3d"></div>
-      <div class="maphint">👆 Arraste para girar · ✌️ pinça para aproximar · toque duplo reinicia</div>
-      <div class="legend">${['casa', 'predio', 'loja', 'fabrica', 'escola', 'hospital', 'policia', 'parque'].map(k => `<span>${Sim.BUILDINGS[k].icon} ${Sim.BUILDINGS[k].name}</span>`).join('')}</div>
-      <div class="mut" style="font-size:13px;margin-top:8px">É só para olhar: a cidade cresce e muda sozinha conforme você constrói e evolui os prédios na aba Cidade.</div></div>`;
+    const btns = [['capital', '🏠'], ['world', '🌍'], ...owned.map(i => [i.key, i.icon])]
+      .map(([k, label]) => `<button class="mapbtn ${k === mapFocus ? 'on' : ''}" data-mapf="${k}" aria-label="Trocar de cidade">${label}</button>`).join('');
+    return `<div class="mapwrap"><div id="map3d"></div><div class="mapsw">${btns}</div></div>`;
   }
 
   function viewInvest() {
@@ -409,6 +407,7 @@
   }
 
   // ---------- Mundo ----------
+  const fortTag = f => f >= 1.25 ? '<span class="okchip">📈 Fase de ouro</span>' : f <= 0.75 ? '<span class="warnchip">📉 Crise política</span>' : '';
   const mood = r => r >= 80 ? '😍' : r >= 60 ? '🙂' : r >= 40 ? '😐' : r >= 20 ? '🙁' : '😠';
   function viewWorld() {
     const w = s.world, f = Sim.worldFactor(s);
@@ -433,6 +432,7 @@
         <div class="eff"><i><b style="width:${Math.round(i.rel)}%;background:${col}"></b></i></div>
         <div class="mut" style="font-size:13px">${i.desc}</div>
         ${i.treaty ? '<div class="perks"><span class="okchip">📜 Tratado comercial ativo</span></div>' : ''}
+        ${(() => { const f = Sim.colonyInfo(s, n.key).fort; return fortTag(f) ? `<div class="perks">${fortTag(f)}<span>Prosperidade ${Math.round(f * 100)}%</span></div>` : ''; })()}
         ${i.owed > 0 ? `<div class="row"><span>Você deve</span><b class="neg">${M(i.owed)}</b></div>` : ''}
         <div class="btns">
           <button class="btn sec" data-gift="${n.key}" ${i.giftCd > 0 || s.cash < Sim.GIFT_COST ? 'disabled' : ''}>🎁 Presente ${M(Sim.GIFT_COST)}${i.giftCd > 0 ? '<small>espere um pouco</small>' : ''}</button>
@@ -449,6 +449,7 @@
     const mine = Sim.NEIGHBORS.map(n => Sim.colonyInfo(s, n.key)).filter(i => i.owned), colNet = mine.reduce((tt, i) => tt + i.net, 0);
     const myCities = mine.length ? `<div class="card"><h3>🏙️ Minhas cidades no exterior (${mine.length})</h3><div class="big ${cls(colNet)}">${sign(Math.round(colNet))}</div><div class="mut" style="text-align:center">de lucro por mês, já no seu caixa</div>
       ${mine.map(i => `<div class="colony ${i.danger ? 'danger' : ''}"><div class="top"><span class="ico">${i.icon}</span><div class="nm">${i.name} ${i.nation ? '🚩' : ''}<small>${i.pop.toLocaleString('pt-BR')} habitantes · ${face(i.happy)} · ${i.staff}/${Sim.SUB_ROLES.length} administradores</small></div><div class="val ${cls(i.net)}">${sign(Math.round(i.net))}<small>por mês</small></div></div>
+        ${fortTag(i.fort) ? `<div class="perks">${fortTag(i.fort)}<span>Prosperidade ${Math.round(i.fort * 100)}%</span></div>` : ''}
         ${i.danger ? `<div class="supline bad">⚠️ A relação com ${i.name} está ruim${i.trouble ? ` (${i.trouble}/5 meses de risco)` : ''}: a renda caiu e eles podem tomar a cidade. Mande presentes!</div>` : ''}
         <div class="btns"><button class="btn" data-gocity="${i.key}">🛠️ Administrar</button>
         <button class="btn sec" data-csell="${i.key}" style="flex:0 0 auto">Vender<small>${M(i.sellValue)}</small></button></div>
@@ -484,6 +485,7 @@
     if (tab === 'map' && $('map3d')) { renderProp(); if (window.City3D) City3D.show(s, mapFocus); return; }
     const keep = $('view').scrollTop;
     $('view').innerHTML = {city: () => withCity(viewCity), map: viewMap, invest: viewInvest, fin: viewFin, world: viewWorld, team: viewTeam, news: viewNews}[tab]();
+    $('view').classList.toggle('mapmode', tab === 'map'); document.body.classList.toggle('maptab', tab === 'map');
     $('view').scrollTop = keep;
     renderProp();
     if (tab === 'map' && window.City3D) City3D.show(s, mapFocus);

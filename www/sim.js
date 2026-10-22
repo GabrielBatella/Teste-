@@ -213,8 +213,8 @@
 
   function newAsset() { return {price: 100, units: 0, spent: 0, hist: [100]}; }
   function newWorld() {
-    const w = {econ: {}, rel: {}, treaty: {}, owed: {}, giftCd: {}, lent: [], request: null, dilemma: null, mods: {commerce: 1, commerceLeft: 0, upkeep: 1, upkeepLeft: 0}, news: []};
-    NEIGHBORS.forEach(n => { w.econ[n.key] = 1; w.rel[n.key] = 50; w.treaty[n.key] = false; w.owed[n.key] = 0; w.giftCd[n.key] = 0; });
+    const w = {econ: {}, rel: {}, treaty: {}, owed: {}, giftCd: {}, fort: {}, lent: [], request: null, dilemma: null, mods: {commerce: 1, commerceLeft: 0, upkeep: 1, upkeepLeft: 0}, news: []};
+    NEIGHBORS.forEach(n => { w.econ[n.key] = 1; w.rel[n.key] = 50; w.treaty[n.key] = false; w.owed[n.key] = 0; w.giftCd[n.key] = 0; w.fort[n.key] = 1; });
     return w;
   }
 
@@ -397,15 +397,16 @@
   // ---------- Cidades em outros países: cidades de verdade, cada uma com a sua economia e os seus administradores ----------
   // Cada país tem uma cidade já construída. Depois de comprar, ela roda como a sua capital (população, prédios, impostos, custos),
   // mas o dinheiro é um só: o lucro cai no seu caixa e as obras saem dele. Os administradores não têm nível: dão conta de qualquer tamanho.
-  const COLONY_MIN_POP = 2000, COLONY_MIN_REL = 55, NATION_MIN_POP = 10000, NATION_MIN_REL = 70, NATION_MIN_CITY = 15000, NATION_TAX = 1.5, NATION_PRICE = 6;
+  const COLONY_MIN_POP = 20000, COLONY_MIN_REL = 55, NATION_MIN_POP = 30000, NATION_MIN_REL = 70, NATION_MIN_CITY = 15000, NATION_TAX = 1.5, NATION_PRICE = 6;
   const SUB_ROLES = ['arquiteto', 'obras', 'infra', 'ambiental', 'social', 'auditor', 'contador', 'economista'];
   const CITY_POP = {vizinha: 2400, republica: 6400, reino: 12800, uniao: 4800, imperio: 19200, federacao: 8000, ilhas: 3200, pampas: 5600, ducado: 7200, emirado: 16000, arquip: 9600};
   const cityList = s => Object.values(s.cities || {});
   const coloniesList = cityList;
   const cityValue = c => buildingsValue(c) + c.pop * 250;
   const subTaxF = s => { const rel = s.world.rel[s.key]; return (rel >= 45 ? 1 : rel >= 30 ? 0.7 : 0.4) * (s.nation ? NATION_TAX : 1); };
-  const ctryF = s => clamp(s.world.econ[s.key], 0.7, 1.3);
-  const cityPrice = (s, key) => Math.round((CITY_POP[key] || 5000) * 150 * (0.5 + nb(key).wealth / 60000) * clamp(s.world.econ[key], 0.7, 1.3) / 1000) * 1000;
+  const fortOf = (s, key) => (s.world.fort && s.world.fort[key] != null) ? s.world.fort[key] : 1;
+  const ctryF = s => clamp(s.world.econ[s.key], 0.7, 1.3) * fortOf(s, s.key);
+  const cityPrice = (s, key) => Math.round((CITY_POP[key] || 5000) * 6000 * (0.5 + nb(key).wealth / 60000) * clamp(s.world.econ[key], 0.7, 1.3) * fortOf(s, key) / 10000) * 10000;
   const annexPrice = (s, key) => cityPrice(s, key) * NATION_PRICE;
   function strHash(str) { let h = 7; for (let i = 0; i < str.length; i++) h = Math.imul(h, 31) + str.charCodeAt(i) | 0; return Math.abs(h); }
   // A cidade de fora fica ligada ao jogo principal: usa o mesmo caixa e o mesmo mundo, mas nada disso vai para o save duplicado
@@ -447,7 +448,7 @@
   }
   function colonyInfo(s, key) {
     const c = (s.cities || {})[key], w = s.world, n = nb(key), rel = w.rel[key];
-    const base = {key, name: n.name, short: n.short, icon: n.icon, rel, econ: w.econ[key], owned: !!c};
+    const base = {key, name: n.name, short: n.short, icon: n.icon, rel, econ: w.econ[key], fort: fortOf(s, key), owned: !!c};
     if (!c) {
       const why = s.pop < COLONY_MIN_POP ? `sua cidade precisa de ${COLONY_MIN_POP.toLocaleString('pt-BR')} habitantes` : rel < COLONY_MIN_REL ? `relação precisa passar de ${COLONY_MIN_REL}` : null;
       return {...base, price: cityPrice(s, key), pop0: CITY_POP[key] || 5000, canBuy: !why, why};
@@ -973,6 +974,17 @@
       if (w.giftCd[k] > 0) w.giftCd[k]--;
       if (w.treaty[k] && w.rel[k] < 40) { w.treaty[k] = false; worldNote(s, `📜 O tratado com ${n.name} acabou porque a relação esfriou.`); }
     });
+    // Política mundial: a prosperidade de cada país oscila; quando um sobe, outro cai (jogo de poder)
+    if (!w.fort) w.fort = {};
+    NEIGHBORS.forEach(n => { const f = w.fort[n.key] == null ? 1 : w.fort[n.key]; w.fort[n.key] = clamp(f + (1 - f) * 0.035 + (worldRand(s) - 0.5) * 0.07, 0.35, 1.8); });
+    if (worldRand(s) < 0.1) {
+      const up = NEIGHBORS[Math.floor(worldRand(s) * NEIGHBORS.length)]; let down = NEIGHBORS[Math.floor(worldRand(s) * NEIGHBORS.length)];
+      if (down.key === up.key) down = NEIGHBORS[(NEIGHBORS.indexOf(up) + 1) % NEIGHBORS.length];
+      const d = 0.3 + worldRand(s) * 0.25;
+      w.fort[up.key] = clamp(w.fort[up.key] + d, 0.35, 1.8); w.fort[down.key] = clamp(w.fort[down.key] - d, 0.35, 1.8);
+      const own = k => (s.cities || {})[k] ? ' (sua cidade)' : '';
+      worldNote(s, `🗳️ Reviravolta política: ${up.name}${own(up.key)} vive uma fase de ouro 📈 e ${down.name}${own(down.key)} entra em crise 📉.`);
+    }
     // Dívida externa demais preocupa os credores
     if (foreignDebt(s) > Math.max(20000, netWorth(s) * 1.5)) NEIGHBORS.forEach(n => { if (w.owed[n.key] > 0) addRel(s, n.key, -1); });
     if (w.mods.commerceLeft > 0) w.mods.commerceLeft--;
@@ -1526,7 +1538,7 @@
       STAFF_ORDER.forEach(k => { if (!s.staff[k]) s.staff[k] = {hired: false, auto: true, level: 1}; if (!s.staff[k].level) s.staff[k].level = 1; });
       ASSETS.forEach(a => { if (!s.assets[a.key]) s.assets[a.key] = newAsset(); });
       if (!s.world) s.world = newWorld();
-      NEIGHBORS.forEach(n => { const w = s.world; if (w.econ[n.key] == null) { w.econ[n.key] = 1; w.rel[n.key] = 50; w.treaty[n.key] = false; w.owed[n.key] = 0; w.giftCd[n.key] = 0; } });
+      NEIGHBORS.forEach(n => { const w = s.world; if (w.econ[n.key] == null) { w.econ[n.key] = 1; w.rel[n.key] = 50; w.treaty[n.key] = false; w.owed[n.key] = 0; w.giftCd[n.key] = 0; } if (!w.fort) w.fort = {}; if (w.fort[n.key] == null) w.fort[n.key] = 1; });
       if (!s.market) s.market = {rate: BASE_RATE, prev: BASE_RATE};
       if (!s.lv) s.lv = [];
       if (!s.cities) s.cities = {};

@@ -2,7 +2,7 @@
 // o custo fica baixo mesmo com centenas de prédios, e a tela só é redesenhada quando algo muda ou você mexe na câmera.
 (function (root) {
   'use strict';
-  const GRASS = 0x5d9c4a, ROAD = 0x39424f;
+  const GRASS = 0x67a94b, ROAD = 0x33393f;
   const hash = n => { let x = Math.imul(n + 1, 2654435761) >>> 0; x ^= x >>> 15; x = Math.imul(x, 2246822519) >>> 0; return (x ^ (x >>> 13)) >>> 0; };
 
   // Posição de cada terreno: espiral quadrada a partir do centro, a cidade cresce igualmente para todos os lados
@@ -37,6 +37,8 @@
   const WALLS = [0xf1e4c3, 0xe9c9a0, 0xd9e3ea, 0xf2d4d0];
   const ROOFS = [0xb5533c, 0x8a4b3a, 0x6b5b95, 0x9a6b3d];
   const GLASS = [0xb7d4ea, 0x9fc4e0, 0xc4d9ea], NEON = [0x4de3ff, 0xff5ad1, 0x7dff9a];
+  const TOWER = [0x86b8bd, 0xd9ccb0, 0x9fb4ca, 0xbf9c78, 0x7aa6c7];              // vidro verde-água, bege, aço, bronze e azul, como na referência
+  const PAVED = {predio: 1, hospital: 1, tecnologia: 1, mercado: 1, universidade: 1, prefeitura: 1, condominio: 1, escola: 1, policia: 1, bombeiros: 1};
   // árvores: copa redonda ou em cone, conforme a posição
   function trees(parts, list, h) {
     list.forEach(([x, z, s], i) => {
@@ -57,11 +59,11 @@
         C(0, 0.0, 0.42, 0.3, 0.025, 0x5ab4e6), ...(() => { const p = []; trees(p, [[-0.4, 0.4, 0.8], [0.4, 0.4, 0.8]]); return p; })()];
     },
     predio: (lv, h) => {
-      if (lv === 1) return [W(0, 0, 0, 0.56, 0.8, 0.5, 0xc9b79c), B(0, 0.8, 0, 0.4, 0.05, 0.34, 0x777777), B(0.15, 0.85, 0.1, 0.1, 0.06, 0.1, 0x8a8f98)];
-      if (lv === 2) return [W(0, 0, 0, 0.58, 1.2, 0.52, 0xb9c3d1), W(0, 1.2, 0, 0.44, 0.3, 0.38, 0xa9b6c8), B(0, 1.5, 0, 0.3, 0.04, 0.26, 0x777777), B(0, 1.54, 0, 0.02, 0.28, 0.02, 0xdddddd), G(0, 1.82, 0, 0.05, 0.05, 0.05, 0xff5a5a)];
-      const neon = NEON[h % 3];
-      return [W(0, 0, 0, 0.6, 1.1, 0.54, GLASS[h % 3]), W(0, 1.1, 0, 0.48, 0.7, 0.42, GLASS[(h + 1) % 3]), W(0, 1.8, 0, 0.34, 0.5, 0.3, GLASS[(h + 2) % 3]), Q(0, 1.78, 0, 0.58, 0.03, neon), Q(0, 1.08, 0, 0.7, 0.03, neon),
-        B(0, 2.3, 0, 0.02, 0.5, 0.02, 0xdddddd), G(0, 2.8, 0, 0.06, 0.06, 0.06, 0xff5a5a), G(0, 0.0, 0.28, 0.5, 0.025, 0.02, neon)];
+      const c1 = TOWER[h % 5], c2 = TOWER[(h + 2) % 5], warm = 0xffe3a8;
+      if (lv === 1) return [W(0, 0, 0, 0.5, 1.15, 0.46, c1), B(0, 1.15, 0, 0.42, 0.05, 0.38, 0x7b838f), B(0.12, 1.2, 0.08, 0.1, 0.07, 0.1, 0x9aa3b0)];
+      if (lv === 2) return [W(0, 0, 0, 0.52, 1.55, 0.46, c1), W(0, 1.55, 0, 0.42, 0.75, 0.36, c2), B(0, 2.3, 0, 0.34, 0.04, 0.3, 0x7b838f), B(0, 2.34, 0, 0.018, 0.34, 0.018, 0xdddddd), G(0, 2.68, 0, 0.04, 0.04, 0.04, 0xff5a5a), Q(0, 1.53, 0, 0.5, 0.025, warm)];
+      return [W(0, 0, 0, 0.58, 1.25, 0.52, c1), W(0, 1.25, 0, 0.48, 1.1, 0.44, c2), W(0, 2.35, 0, 0.36, 0.95, 0.32, c1), W(0, 3.3, 0, 0.22, 0.55, 0.2, c2), Q(0, 1.23, 0, 0.56, 0.025, warm), Q(0, 2.33, 0, 0.44, 0.025, warm),
+        B(0, 3.85, 0, 0.018, 0.65, 0.018, 0xdddddd), G(0, 4.5, 0, 0.05, 0.05, 0.05, 0xff5a5a), B(0.0, 0, 0.29, 0.34, 0.1, 0.03, 0x6f7783)];
     },
     condominio: (lv) => {
       const p = [V(-0.2, 0, -0.02, 0.34, 0.5 + 0.28 * (lv - 1), 0xe8dcc8), V(0.22, 0, 0.0, 0.28, 0.38 + 0.28 * (lv - 1), 0xd9c7a8), C(0, 0.0, 0.36, 0.34, 0.02, 0x5ab4e6), S(-0.2, 0.46 + 0.28 * (lv - 1), -0.02, 0.3, 0.12, 0.3, 0x4fa05a)];
@@ -203,12 +205,15 @@
   }
 
   // ---------- Montagem da cidade ----------
-  const PITCH = 1.3, SCALE = 0.8;                       // distância entre terrenos (o vão vira rua) e tamanho dos prédios
+  const PITCH = 1.5, SCALE = 0.8;                       // distância entre terrenos (o vão vira rua) e tamanho dos prédios
   let cars = [], walkers = [], smoke = [], turbines = [], boats = [], dyn = [], clouds = null, cloudData = [], lay = null, mode = 'city', clock = 0;
+  const CAR_KINDS = ['sedan', 'sedan', 'sedan', 'suv', 'suv', 'taxi', 'bus', 'truck'];
+  const CAR_TYPES = {sedan: {L: 0.27, W: 0.12, H: 0.07, cL: 0.14, cH: 0.06, cO: -0.01}, suv: {L: 0.3, W: 0.13, H: 0.09, cL: 0.19, cH: 0.07, cO: -0.02}, taxi: {L: 0.27, W: 0.12, H: 0.07, cL: 0.14, cH: 0.06, cO: -0.01},
+    bus: {L: 0.62, W: 0.15, H: 0.15, cL: 0.56, cH: 0.05, cO: 0, cY: 0.09}, truck: {L: 0.46, W: 0.14, H: 0.13, cL: 0.12, cH: 0.07, cO: 0.15}};
   const CAR_COLORS = [0xd9453d, 0x3d85c6, 0xf4b942, 0xf1f1f1, 0x2f2f35, 0x4fae45, 0xa78bfa, 0xff8a3d];
   const SKIN = [0xf1c9a5, 0xd9a577, 0x8d5a3b, 0xf4d9bd], CLOTHES = [0xd9453d, 0x3d85c6, 0xf4b942, 0xffffff, 0x4fae45, 0xa78bfa, 0x2f2f35];
   const M4 = () => new (root.THREE.Matrix4)(), V3 = () => new (root.THREE.Vector3)();
-  let tmp = null, lay0 = null, trains = [];
+  let tmp = null, lay0 = null, trains = [], lights = [], lightMesh = null, lightKey = -1;
   const T_ = () => tmp || (tmp = {m4: M4(), q: new root.THREE.Quaternion(), e: new root.THREE.Euler(), v: V3(), sc: V3(), col: new root.THREE.Color()});
 
   // Janelas: o desenho (vidro escuro e luzes que acendem de noite) é feito no próprio material, sem textura nem peças extras
@@ -253,7 +258,7 @@
   function clearScene() {
     meshes.forEach(disposeMesh); meshes = []; dyn.forEach(disposeMesh); dyn = []; if (clouds) { disposeMesh(clouds); clouds = null; }
     if (ground) { scene.remove(ground); ground.children.forEach(c => { c.geometry.dispose(); c.material.dispose(); }); ground = null; }
-    cars = []; walkers = []; smoke = []; turbines = []; boats = []; trains = [];
+    cars = []; walkers = []; smoke = []; turbines = []; boats = []; trains = []; lights = []; lightMesh = null; lightKey = -1;
   }
   function makeInst(geo, list, mat) {
     if (!list.length) return null;
@@ -290,7 +295,7 @@
     for (let i = 0; i < count; i++) {
       const [gx, gz] = spiral(i), px = gx * PITCH, pz = gz * PITCH, k = tiles[i], h = hash(i);
       items.b.push([px, 0.02, pz, 0.98, 0.03, 0.98, 0xb9bfc7, 0, 0]);                                  // calçada
-      items.b.push([px, 0.05, pz, 0.82, 0.03, 0.82, k ? GRASS : (h % 3 ? 0x6fb35a : 0x78bd62), 0, 0]);   // terreno
+      items.b.push([px, 0.05, pz, 0.82, 0.03, 0.82, k ? (PAVED[k] ? 0xaeb4bc : GRASS) : (h % 3 ? 0x6fb35a : 0x78bd62), 0, 0]);   // terreno
       if (!k) {                                                                                           // terreno livre: uma ou duas árvores
         const n = 1 + (h % 2);
         for (let j = 0; j < n; j++) { const ox = ((h >> (3 + j * 4)) % 7 - 3) * 0.09, oz = ((h >> (5 + j * 4)) % 7 - 3) * 0.09; items.b.push([px + ox, 0.08, pz + oz, 0.03, 0.08, 0.03, 0x6b4a2b, 0, 0]); items.t.push([px + ox, 0.14, pz + oz, 0.17, 0.3, 0.17, 0x2f7d3a, 0, 0]); }
@@ -298,16 +303,27 @@
       }
       emit(items, k, Math.max(1, Math.min(3, (s.lv && s.lv[i]) || 1)), h, px, pz, SCALE, 0.08);
     }
-    // ruas: faixas tracejadas no meio de cada quadra e postes de luz nos cruzamentos
-    const x0 = minx - 1, x1 = maxx, z0 = minz - 1, z1 = maxz, xs = [], zs = [];
+    // ruas largas: faixa dupla amarela, linhas de borda, faixas de pedestre, semáforos e postes nos cruzamentos
+    const x0 = minx - 1, x1 = maxx, z0 = minz - 1, z1 = maxz, xs = [], zs = [], HW = 0.26;
     for (let i = x0; i <= x1; i++) xs.push((i + 0.5) * PITCH);
     for (let j = z0; j <= z1; j++) zs.push((j + 0.5) * PITCH);
-    for (const x of xs) for (let j = minz - 1; j <= maxz + 1; j++) items.b.push([x, 0.012, j * PITCH, 0.025, 0.006, 0.34, 0xe9e6c8, 0, 0]);
-    for (const z of zs) for (let i = minx - 1; i <= maxx + 1; i++) items.b.push([i * PITCH, 0.012, z, 0.34, 0.006, 0.025, 0xe9e6c8, 0, 0]);
+    const seg = PITCH - 2 * HW - 0.14;
+    for (const x of xs) for (let j = minz - 1; j <= maxz + 1; j++) {
+      const zc = j * PITCH;
+      items.b.push([x - 0.013, 0.012, zc, 0.012, 0.004, seg, 0xe3b72e, 0, 0], [x + 0.013, 0.012, zc, 0.012, 0.004, seg, 0xe3b72e, 0, 0], [x - 0.225, 0.012, zc, 0.01, 0.004, seg + 0.1, 0xf0f0f0, 0, 0], [x + 0.225, 0.012, zc, 0.01, 0.004, seg + 0.1, 0xf0f0f0, 0, 0]);
+    }
+    for (const z of zs) for (let i = minx - 1; i <= maxx + 1; i++) {
+      const xc = i * PITCH;
+      items.b.push([xc, 0.012, z - 0.013, seg, 0.004, 0.012, 0xe3b72e, 0, 0], [xc, 0.012, z + 0.013, seg, 0.004, 0.012, 0xe3b72e, 0, 0], [xc, 0.012, z - 0.225, seg + 0.1, 0.004, 0.01, 0xf0f0f0, 0, 0], [xc, 0.012, z + 0.225, seg + 0.1, 0.004, 0.01, 0xf0f0f0, 0, 0]);
+    }
+    lights = [];
     xs.forEach((x, a) => zs.forEach((z, b) => {
-      if ((a + b) % 2) return;
-      items.c.push([x + 0.17, 0.0, z + 0.17, 0.025, 0.3, 0.025, 0x5c6470, 0, 0]);
-      items.lamp.push([x + 0.17, 0.3, z + 0.17, 0.08, 0.03, 0.08, 0xffe9a0, 0, 0]);
+      [-0.15, -0.05, 0.05, 0.15].forEach(o => items.b.push([x + HW + 0.07, 0.013, z + o, 0.11, 0.004, 0.04, 0xf4f4f4, 0, 0], [x - HW - 0.07, 0.013, z + o, 0.11, 0.004, 0.04, 0xf4f4f4, 0, 0], [x + o, 0.013, z + HW + 0.07, 0.04, 0.004, 0.11, 0xf4f4f4, 0, 0], [x + o, 0.013, z - HW - 0.07, 0.04, 0.004, 0.11, 0xf4f4f4, 0, 0]));
+      const cx = x + 0.31, cz = z + 0.31, dx = x - 0.31, dz = z - 0.31;
+      items.c.push([cx, 0.03, cz, 0.03, 0.36, 0.03, 0x4d5560, 0, 0], [dx, 0.03, dz, 0.03, 0.36, 0.03, 0x4d5560, 0, 0]);
+      lights.push({x: cx, y: 0.4, z: cz, axis: 'z'}, {x: dx, y: 0.4, z: dz, axis: 'x'});
+      items.c.push([x - 0.31, 0.03, z + 0.31, 0.025, 0.3, 0.025, 0x5c6470, 0, 0], [x + 0.31, 0.03, z - 0.31, 0.025, 0.3, 0.025, 0x5c6470, 0, 0]);
+      items.lamp.push([x - 0.31, 0.33, z + 0.31, 0.08, 0.03, 0.08, 0xffe9a0, 0, 0], [x + 0.31, 0.33, z - 0.31, 0.08, 0.03, 0.08, 0xffe9a0, 0, 0]);
     }));
     // monotrilho elevado cortando a cidade (só em cidades já grandes)
     lay0 = null;
@@ -320,11 +336,31 @@
       for (let x = lx; x <= hx; x += PITCH * 2) if (Math.abs(x - mx) > PITCH * 0.6) items.c.push([x, 0, mz, 0.06, 0.86, 0.06, 0x9aa3b0, 0, 0]);
       lay0 = [{alongZ: true, line: mx, y: 0.66, lo: lz, hi: hz}, {alongZ: false, line: mz, y: 0.9, lo: lx, hi: hx}];
     }
+    // natureza em volta da cidade: colinas, florestas, lagos e plantações
+    {
+      const ccx = (minx + maxx) / 2 * PITCH, ccz = (minz + maxz) / 2 * PITCH, base = Math.max(maxx - minx, maxz - minz) / 2 * PITCH + 2.4;
+      const ring = (i, m, extra) => { const a = rnd(i, m, 1) * Math.PI * 2, r = base * 1.42 + 1.6 + rnd(i, m, 2) * extra; return [ccx + Math.cos(a) * r, ccz + Math.sin(a) * r, rnd(i, m, 3), rnd(i, m, 4)]; };
+      for (let i = 0; i < 16; i++) { const [x, z, u, v] = ring(i, 31, 16), sx = 4 + u * 5, sy = 1.5 + v * 1.4; items.s.push([x, -sy * 0.64, z, sx, sy, sx * 0.85, v > 0.5 ? 0x5f9f4a : 0x6caf52, 0, 0]); }
+      for (let f = 0; f < 14; f++) {
+        const [fx, fz] = ring(f, 41, 13);
+        for (let j = 0; j < 12; j++) {
+          const x = fx + (rnd(f * 20 + j, 7, 1) - 0.5) * 3.2, z = fz + (rnd(f * 20 + j, 7, 2) - 0.5) * 3.2, sz = 0.7 + rnd(f * 20 + j, 7, 3) * 0.7;
+          items.b.push([x, 0, z, 0.06, 0.18 * sz, 0.06, 0x6b4a2b, 0, 0]);
+          if (j % 3) items.t.push([x, 0.14 * sz, z, 0.42 * sz, 0.9 * sz, 0.42 * sz, j % 2 ? 0x2f7d3a : 0x3c8f45, 0, 0]); else items.s.push([x, 0.1 * sz, z, 0.5 * sz, 0.6 * sz, 0.5 * sz, 0x4a9f4f, 0, 0]);
+        }
+      }
+      for (let i = 0; i < 2; i++) { const [x, z] = ring(i, 51, 9); items.c.push([x, -0.012, z, 2.6, 0.03, 1.9, 0x4aa3d9, 0, 0]); }
+      for (let i = 0; i < 6; i++) {
+        const [x, z, u] = ring(i, 61, 10), col = [0xd9c27a, 0xa8c45a, 0xc9b36a][i % 3];
+        items.b.push([x, 0, z, 3, 0.02, 2, col, u * 3, 0]);
+        for (let k = -2; k <= 2; k++) items.b.push([x, 0.015, z + k * 0.34, 2.8, 0.01, 0.09, 0x86a64a, 0, 0]);
+      }
+    }
     buildMeshes(items);
     // chão: gramado enorme (some na neblina) e o asfalto só onde tem rua
     const gw = (maxx - minx + 4) * PITCH, gd = (maxz - minz + 4) * PITCH, cx = (minx + maxx) / 2 * PITCH, cz = (minz + maxz) / 2 * PITCH;
     ground = new T.Group();
-    const terrain = new T.Mesh(new T.PlaneGeometry(400, 400), new T.MeshLambertMaterial({color: 0x3f7a35})); terrain.rotation.x = -Math.PI / 2; terrain.position.set(cx, -0.02, cz);
+    const terrain = new T.Mesh(new T.PlaneGeometry(400, 400), new T.MeshLambertMaterial({color: 0x6aa84f})); terrain.rotation.x = -Math.PI / 2; terrain.position.set(cx, -0.02, cz);
     const asphalt = new T.Mesh(new T.PlaneGeometry(gw - 2 * PITCH + 0.6, gd - 2 * PITCH + 0.6), new T.MeshLambertMaterial({color: ROAD})); asphalt.rotation.x = -Math.PI / 2; asphalt.position.set(cx, 0.005, cz);
     terrain.receiveShadow = true; asphalt.receiveShadow = true; ground.add(terrain, asphalt); scene.add(ground);
     lay = {minx: (minx - 1) * PITCH, maxx: (maxx + 1) * PITCH, minz: (minz - 1) * PITCH, maxz: (maxz + 1) * PITCH, xs, zs};
@@ -405,10 +441,12 @@
     const k = T_(), n = Math.max(6, Math.min(60, Math.round(built * 0.7))), nw = Math.max(8, Math.min(50, Math.round(built * 0.8)));
     for (let i = 0; i < n; i++) {
       const alongZ = i % 2 === 0, lines = alongZ ? lay.xs : lay.zs, dir = hash(i * 3 + 1) % 2 ? 1 : -1, lo = alongZ ? lay.minz : lay.minx, hi = alongZ ? lay.maxz : lay.maxx;
-      cars.push({alongZ, line: lines[hash(i * 5 + 2) % lines.length] + dir * 0.06, dir, speed: 0.5 + rnd(i, 7, 3) * 0.7, t: lo + rnd(i, 11, 4) * (hi - lo), lo, hi, color: CAR_COLORS[hash(i * 13 + 5) % CAR_COLORS.length]});
+      const kind = CAR_KINDS[hash(i * 17 + 3) % CAR_KINDS.length], tp = CAR_TYPES[kind];
+      cars.push({alongZ, base: lines[hash(i * 5 + 2) % lines.length], dir, speed: (kind === 'bus' ? 0.45 : 0.6) + rnd(i, 7, 3) * 0.5, v: 0, t: lo + rnd(i, 11, 4) * (hi - lo), lo, hi, tp,
+        color: kind === 'taxi' ? 0xf4c430 : kind === 'bus' ? [0x3d85c6, 0xd9453d, 0x4fae45][i % 3] : CAR_COLORS[hash(i * 13 + 5) % CAR_COLORS.length], last: -999});
     }
     for (let i = 0; i < nw; i++) {
-      const alongZ = i % 2 === 1, lines = alongZ ? lay.xs : lay.zs, side = hash(i * 9 + 1) % 2 ? 0.2 : -0.2, dir = hash(i * 3 + 8) % 2 ? 1 : -1, lo = alongZ ? lay.minz : lay.minx, hi = alongZ ? lay.maxz : lay.maxx;
+      const alongZ = i % 2 === 1, lines = alongZ ? lay.xs : lay.zs, side = hash(i * 9 + 1) % 2 ? 0.31 : -0.31, dir = hash(i * 3 + 8) % 2 ? 1 : -1, lo = alongZ ? lay.minz : lay.minx, hi = alongZ ? lay.maxz : lay.maxx;
       walkers.push({alongZ, line: lines[hash(i * 5 + 4) % lines.length] + side, dir, speed: 0.1 + rnd(i, 5, 9) * 0.14, t: lo + rnd(i, 13, 2) * (hi - lo), lo, hi, skin: SKIN[hash(i) % 4], cloth: CLOTHES[hash(i * 3) % CLOTHES.length]});
     }
     (lay0 || []).forEach((r, j) => { for (let q = 0; q < 2; q++) trains.push({...r, dir: q ? -1 : 1, speed: 0.9 + 0.2 * j, t: r.lo + (q ? 0.7 : 0.2) * (r.hi - r.lo)}); });
@@ -417,8 +455,10 @@
       trains.forEach((tr, i) => { for (let c = 0; c < 3; c++) { trains.mesh[0].setColorAt(i * 3 + c, k.col.setHex(c === 0 ? 0xe9eef5 : 0xdfe6ee)); trains.mesh[1].setColorAt(i * 3 + c, k.col.setHex(tr.alongZ ? 0x4de3ff : 0xff5ad1)); } });
       trains.mesh.forEach(m => { m.instanceColor.needsUpdate = true; });
     }
-    const cb = dynMesh(geoms.b, n), cc = dynMesh(geoms.b, n), wb = dynMesh(geoms.b, nw), wh = dynMesh(geoms.b, nw);
-    cars.forEach((c, i) => { cb.setColorAt(i, k.col.setHex(c.color)); cc.setColorAt(i, k.col.setHex(0xcfe3f2)); });
+    const cb = dynMesh(geoms.b, n), cc = dynMesh(geoms.b, n), cl = dynMesh(geoms.g, n * 4, true), wb = dynMesh(geoms.b, nw), wh = dynMesh(geoms.b, nw);
+    cars.forEach((c, i) => { cb.setColorAt(i, k.col.setHex(c.color)); cc.setColorAt(i, k.col.setHex(c.tp === CAR_TYPES.bus ? 0x9fc4e0 : 0xcfe3f2)); for (let j = 0; j < 4; j++) cl.setColorAt(i * 4 + j, k.col.setHex(j < 2 ? 0xfff4c8 : 0xff3b30)); });
+    cl.instanceColor.needsUpdate = true; cars.lamps = cl;
+    if (lights.length) { lightMesh = dynMesh(geoms.g, lights.length, true); lights.forEach((l, i) => lightMesh.setColorAt(i, k.col.setHex(0x4dff7a))); lightMesh.instanceColor.needsUpdate = true; lightKey = -1; }
     walkers.forEach((w, i) => { wb.setColorAt(i, k.col.setHex(w.cloth)); wh.setColorAt(i, k.col.setHex(w.skin)); });
     [cb, cc, wb, wh].forEach(m => { m.instanceColor.needsUpdate = true; });
     cars.mesh = [cb, cc]; walkers.mesh = [wb, wh];
@@ -447,24 +487,58 @@
   function animate(dt) {
     if (!lay && mode === 'city') return;
     clock += dt; const k = T_(), {m4, q, e, v, sc} = k, TAU = Math.PI * 2;
-    if (cars.mesh) {
-      const [body, cabin] = cars.mesh;
+    // semáforos: ciclo de 10 s (um eixo verde, amarelo, depois o outro)
+    const cyc = clock % 10, stZ = cyc < 4.5 ? 0 : cyc < 5 ? 1 : 2, stX = cyc < 5 ? 2 : cyc < 9.5 ? 0 : 1;
+    if (lightMesh) {
+      const key = stZ * 3 + stX;
+      if (key !== lightKey) {
+        lightKey = key; const COL = [0x4dff7a, 0xffd84d, 0xff4d4d];
+        lights.forEach((l, i) => lightMesh.setColorAt(i, k.col.setHex(COL[l.axis === 'z' ? stZ : stX])));
+        lightMesh.instanceColor.needsUpdate = true;
+      }
+      if (!lightMesh.userData.placed) { lights.forEach((l, i) => { e.set(0, 0, 0); q.setFromEuler(e); v.set(l.x, l.y, l.z); sc.set(0.07, 0.1, 0.07); m4.compose(v, q, sc); lightMesh.setMatrixAt(i, m4); }); lightMesh.instanceMatrix.needsUpdate = true; lightMesh.userData.placed = true; }
+    }
+    if (cars.mesh && lay) {
+      const [body, cabin] = cars.mesh, lamps = cars.lamps, night = nightU.value;
       cars.forEach((c, i) => {
-        c.t += c.dir * c.speed * dt; if (c.t > c.hi) c.t = c.lo; else if (c.t < c.lo) c.t = c.hi;
-        const x = c.alongZ ? c.line : c.t, z = c.alongZ ? c.t : c.line;
+        // espera o carro da frente, o sinal vermelho e vai acelerando e freando devagar
+        let blocked = false;
+        for (let j = 0; j < cars.length; j++) {
+          const o = cars[j]; if (j === i || o.alongZ !== c.alongZ || o.dir !== c.dir || Math.abs(o.base - c.base) > 0.01) continue;
+          const gap = (o.t - c.t) * c.dir; if (gap > 0 && gap < (c.tp.L + o.tp.L) / 2 + 0.12) { blocked = true; break; }
+        }
+        const cross = c.alongZ ? lay.zs : lay.xs, o0 = cross[0], idx = c.dir > 0 ? Math.ceil((c.t - o0) / PITCH - 1e-6) : Math.floor((c.t - o0) / PITCH + 1e-6), cc0 = o0 + idx * PITCH, dist = (cc0 - c.t) * c.dir;
+        if (!blocked && dist > 0.3 && dist < 0.42 && (c.alongZ ? stZ : stX) !== 0) blocked = true;
+        c.v += ((blocked ? 0 : c.speed) - c.v) * Math.min(1, dt * 3.5);
+        const before = dist; c.t += c.dir * c.v * dt;
+        if (c.t > c.hi) c.t = c.lo; else if (c.t < c.lo) c.t = c.hi;
+        // no meio do cruzamento, às vezes vira
+        const tag = idx + (c.alongZ ? 1000 : 0);
+        if (before > 0 && (cc0 - c.t) * c.dir <= 0 && c.last !== tag && cc0 > lay[c.alongZ ? 'minz' : 'minx'] + 0.1 && cc0 < lay[c.alongZ ? 'maxz' : 'maxx'] - 0.1) {
+          c.last = tag;
+          if (hash(Math.floor(clock * 100) + i * 31 + idx) % 100 < 32) { const oldBase = c.base; c.alongZ = !c.alongZ; c.base = cc0; c.t = oldBase; c.dir = hash(i + idx + Math.floor(clock)) % 2 ? 1 : -1; c.lo = c.alongZ ? lay.minz : lay.minx; c.hi = c.alongZ ? lay.maxz : lay.maxx; c.last = -999; }
+        }
+        const lane = c.alongZ ? c.base - c.dir * 0.1 : c.base + c.dir * 0.1, x = c.alongZ ? lane : c.t, z = c.alongZ ? c.t : lane, tp = c.tp;
         e.set(0, c.alongZ ? Math.PI / 2 : 0, 0); q.setFromEuler(e);
-        v.set(x, 0.07, z); sc.set(0.26, 0.09, 0.13); m4.compose(v, q, sc); body.setMatrixAt(i, m4);
-        v.set(x, 0.15, z); sc.set(0.13, 0.08, 0.115); m4.compose(v, q, sc); cabin.setMatrixAt(i, m4);
+        v.set(x, 0.03, z); sc.set(tp.L, tp.H, tp.W); m4.compose(v, q, sc); body.setMatrixAt(i, m4);
+        const fx = c.alongZ ? 0 : c.dir * tp.cO, fz = c.alongZ ? c.dir * tp.cO : 0;
+        v.set(x + fx, 0.03 + (tp.cY || tp.H), z + fz); sc.set(tp.cL, tp.cH, tp.W * 0.86); m4.compose(v, q, sc); cabin.setMatrixAt(i, m4);
+        // faróis na frente e lanternas atrás (acendem mais à noite)
+        e.set(0, 0, 0); q.setFromEuler(e); const s2 = 0.022 + 0.03 * night;
+        for (let j = 0; j < 4; j++) {
+          const front = j < 2, side = (j % 2 ? 1 : -1) * tp.W * 0.32, along = (front ? 1 : -1) * c.dir * (tp.L / 2 - 0.005);
+          v.set(c.alongZ ? x + side : x + along, 0.03 + tp.H * 0.45, c.alongZ ? z + along : z + side); sc.set(s2, s2, s2); m4.compose(v, q, sc); lamps.setMatrixAt(i * 4 + j, m4);
+        }
       });
-      body.instanceMatrix.needsUpdate = true; cabin.instanceMatrix.needsUpdate = true;
+      body.instanceMatrix.needsUpdate = true; cabin.instanceMatrix.needsUpdate = true; lamps.instanceMatrix.needsUpdate = true;
     }
     if (walkers.mesh) {
       const [bd, hd] = walkers.mesh; e.set(0, 0, 0); q.setFromEuler(e);
       walkers.forEach((w, i) => {
         w.t += w.dir * w.speed * dt; if (w.t > w.hi) w.t = w.lo; else if (w.t < w.lo) w.t = w.hi;
         const x = w.alongZ ? w.line : w.t, z = w.alongZ ? w.t : w.line, bob = Math.abs(Math.sin(clock * 6 + i)) * 0.008;
-        v.set(x, 0.07 + bob, z); sc.set(0.035, 0.07, 0.035); m4.compose(v, q, sc); bd.setMatrixAt(i, m4);
-        v.set(x, 0.14 + bob, z); sc.set(0.03, 0.03, 0.03); m4.compose(v, q, sc); hd.setMatrixAt(i, m4);
+        v.set(x, 0.035 + bob, z); sc.set(0.035, 0.07, 0.035); m4.compose(v, q, sc); bd.setMatrixAt(i, m4);
+        v.set(x, 0.105 + bob, z); sc.set(0.03, 0.03, 0.03); m4.compose(v, q, sc); hd.setMatrixAt(i, m4);
       });
       bd.instanceMatrix.needsUpdate = true; hd.instanceMatrix.needsUpdate = true;
     }

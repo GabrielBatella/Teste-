@@ -1422,7 +1422,7 @@ test('proposta da concorrência: dar aumento segura a pessoa; ignorar faz ela sa
 test('cidades no exterior: já existem prontas, exigem cidade grande e boa relação e rendem de verdade', () => {
   const s = rica(340); s.cash = 5e9; s.pop = 500; s.world.rel.reino = 70;
   assert.equal(Sim.colonyInfo(s, 'reino').canBuy, false); assert.equal(Sim.buyColony(s, 'reino').ok, false);
-  s.pop = 3000; s.world.rel.reino = 40; assert.equal(Sim.buyColony(s, 'reino').ok, false, 'relação baixa');
+  s.pop = 25000; s.world.rel.reino = 40; assert.equal(Sim.buyColony(s, 'reino').ok, false, 'relação baixa');
   s.world.rel.reino = 70; const pre = Sim.colonyInfo(s, 'reino'); assert.equal(pre.pop0, Sim.CITY_POP.reino);
   const nw0 = Sim.netWorth(s), c0 = s.cash;
   assert.ok(Sim.buyColony(s, 'reino').ok); assert.equal(s.cash, c0 - pre.price);
@@ -1431,14 +1431,14 @@ test('cidades no exterior: já existem prontas, exigem cidade grande e boa rela�
   assert.ok(c.pop >= Sim.CITY_POP.reino && c.tiles.length > 50, 'cidade de verdade, já construída');
   assert.ok(a.cov.water >= 0.99 && a.cov.power >= 0.99 && a.cov.edu > 0.8 && a.empRate > 0.9, 'atende bem o povo');
   assert.ok(Sim.netWorth(s) > nw0 - pre.price, 'a cidade conta no patrimônio');
-  for (let m = 0; m < 24; m++) { s.pop = 3000; s.lowHappy = 0; s.world.rel.reino = 70; s.cash = Math.max(s.cash, 1e9); Sim.step(s); }
+  for (let m = 0; m < 24; m++) { s.pop = 25000; s.lowHappy = 0; s.world.rel.reino = 70; s.cash = Math.max(s.cash, 1e9); Sim.step(s); }
   const i = Sim.colonyInfo(s, 'reino'); assert.ok(i.owned && i.net > 0 && i.pop > 10000, 'dá lucro: ' + i.net);
   assert.ok(s.report.colonies > 0);
   const v = Sim.sellColony(s, 'reino'); assert.ok(v.ok && v.value > 0); assert.equal(Sim.colonyInfo(s, 'reino').owned, false);
 });
 
 test('administradores da cidade de fora não têm nível: dão conta de qualquer tamanho e só os cargos de cidade', () => {
-  const s = rica(343); s.cash = 5e9; s.pop = 3000; s.world.rel.imperio = 70; assert.ok(Sim.buyColony(s, 'imperio').ok);
+  const s = rica(343); s.cash = 5e9; s.pop = 25000; s.world.rel.imperio = 70; assert.ok(Sim.buyColony(s, 'imperio').ok);
   const c = s.cities.imperio;
   assert.equal(Sim.hire(c, 'analista').ok, false, 'investidor é só da capital');
   assert.ok(Sim.hire(c, 'arquiteto').ok && Sim.hire(c, 'social').ok);
@@ -1451,19 +1451,19 @@ test('administradores da cidade de fora não têm nível: dão conta de qualquer
 });
 
 test('cidade de fora gasta o caixa único, obras e avisos aparecem na capital', () => {
-  const s = rica(345); s.cash = 5e9; s.pop = 3000; s.world.rel.vizinha = 70; Sim.buyColony(s, 'vizinha');
+  const s = rica(345); s.cash = 5e9; s.pop = 25000; s.world.rel.vizinha = 70; Sim.buyColony(s, 'vizinha');
   const c = s.cities.vizinha, cash = s.cash, tiles = c.tiles.length;
   assert.equal(c.cash, s.cash, 'mesmo caixa'); c.cash -= 1000; assert.equal(s.cash, cash - 1000);
   s.cash = 5e9; assert.ok(Sim.buildAny(c, 'hospital').ok); assert.ok(c.tiles.length > tiles && s.cash < 5e9, 'obra paga com o caixa único');
-  Sim.hire(c, 'arquiteto'); Sim.hire(c, 'social'); Sim.hire(c, 'infra'); c.pop = 9000;
-  for (let m = 0; m < 40; m++) { s.pop = 3000; s.lowHappy = 0; s.cash = 5e9; s.world.rel.vizinha = 70; Sim.step(s); }
+  Sim.hire(c, 'arquiteto'); Sim.hire(c, 'social'); Sim.hire(c, 'infra'); c.pop = 30000;
+  for (let m = 0; m < 40; m++) { s.pop = 25000; s.lowHappy = 0; s.cash = 5e9; s.world.rel.vizinha = 70; Sim.step(s); }
   assert.ok(s.log.some(l => l.includes('Cidade Vizinha:')), 'avisos da cidade chegam ao histórico da capital');
   assert.ok(!s.over, 'cidade de fora não acaba o jogo');
 });
 
 test('cidades de fora sobrevivem ao salvar e carregar e saves antigos migram', () => {
-  const s = rica(346); s.cash = 5e9; s.pop = 3000; s.world.rel.reino = 70; Sim.buyColony(s, 'reino'); Sim.hire(s.cities.reino, 'arquiteto');
-  for (let m = 0; m < 4; m++) { s.pop = 3000; s.lowHappy = 0; s.world.rel.reino = 70; Sim.step(s); }
+  const s = rica(346); s.cash = 5e9; s.pop = 25000; s.world.rel.reino = 70; Sim.buyColony(s, 'reino'); Sim.hire(s.cities.reino, 'arquiteto');
+  for (let m = 0; m < 4; m++) { s.pop = 25000; s.lowHappy = 0; s.world.rel.reino = 70; Sim.step(s); }
   const txt = Sim.serialize(s), r = Sim.load(txt);
   assert.equal(r.cities.reino.tiles.length, s.cities.reino.tiles.length); assert.ok(Sim.hired(r.cities.reino, 'arquiteto'));
   assert.equal(r.cities.reino.cash, r.cash, 'caixa continua ligado'); assert.ok(!txt.includes('"assets":{}'), 'não duplica o mundo');
@@ -1472,40 +1472,40 @@ test('cidades de fora sobrevivem ao salvar e carregar e saves antigos migram', (
 });
 
 test('cidade no exterior é tomada se a relação ficar péssima por meses', () => {
-  const s = rica(341); s.cash = 5e8; s.pop = 3000; s.world.rel.uniao = 70; assert.ok(Sim.buyColony(s, 'uniao').ok);
+  const s = rica(341); s.cash = 5e8; s.pop = 25000; s.world.rel.uniao = 70; assert.ok(Sim.buyColony(s, 'uniao').ok);
   for (let m = 0; m < 8 && Sim.colonyInfo(s, 'uniao').owned; m++) { s.world.rel.uniao = 5; s.cash = 5e8; Sim.step(s); }
   assert.equal(Sim.colonyInfo(s, 'uniao').owned, false);
   assert.ok(s.log.some(l => l.includes('tomou a sua cidade')));
-  const t = rica(342); t.cash = 5e8; t.pop = 3000; t.world.rel.uniao = 70; Sim.buyColony(t, 'uniao');
-  t.world.rel.uniao = 20; t.pop = 3000; Sim.step(t); t.world.rel.uniao = 70; for (let m = 0; m < 8; m++) { t.world.rel.uniao = 70; t.cash = 5e8; Sim.step(t); }
+  const t = rica(342); t.cash = 5e8; t.pop = 25000; t.world.rel.uniao = 70; Sim.buyColony(t, 'uniao');
+  t.world.rel.uniao = 20; t.pop = 25000; Sim.step(t); t.world.rel.uniao = 70; for (let m = 0; m < 8; m++) { t.world.rel.uniao = 70; t.cash = 5e8; Sim.step(t); }
   assert.ok(Sim.colonyInfo(t, 'uniao').owned, 'se a relação melhora, o risco passa');
 });
 
 // ---------- Fim de jogo: mercado com limite e países ----------
 test('mercado com limite: quantias gigantes rendem proporcionalmente muito menos', () => {
   const cresce = cash0 => { let tot = 0; const N = 4;
-    for (let k = 1; k <= N; k++) { const s = Sim.newGame(900 + k); s.cash = cash0 * 2; s.pop = 3000; Sim.buy(s, 'etf', cash0);
-      const v0 = s.assets.etf.units * s.assets.etf.price; for (let m = 0; m < 60; m++) { s.pop = 3000; s.lowHappy = 0; s.cash = Math.max(s.cash, 1e6); Sim.step(s); if (s.over) break; }
+    for (let k = 1; k <= N; k++) { const s = Sim.newGame(900 + k); s.cash = cash0 * 2; s.pop = 25000; Sim.buy(s, 'etf', cash0);
+      const v0 = s.assets.etf.units * s.assets.etf.price; for (let m = 0; m < 60; m++) { s.pop = 25000; s.lowHappy = 0; s.cash = Math.max(s.cash, 1e6); Sim.step(s); if (s.over) break; }
       tot += s.assets.etf.units * s.assets.etf.price / v0; }
     return tot / N; };
   const pequeno = cresce(2e4), gigante = cresce(2e10);
   assert.ok(gigante < pequeno * 0.8 || gigante < 1.15, `saturado rende menos: ${pequeno} x ${gigante}`);
   const s = Sim.newGame(1); s.cash = 1e10; Sim.buy(s, 'etf', 5e9);
   assert.ok(Sim.assetLiquidity(s, 'etf') < 0.05); assert.ok(Sim.assetLiquidity(Sim.newGame(1), 'etf') === 1);
-  s.cash = 1e10; s.pop = 3000; s.world.rel.reino = 70; assert.ok(Sim.buyColony(s, 'reino').ok);
+  s.cash = 1e10; s.pop = 25000; s.world.rel.reino = 70; assert.ok(Sim.buyColony(s, 'reino').ok);
   const antes = Sim.marketScale(Sim.newGame(1)); assert.ok(Sim.marketScale(s) > antes, 'cidades ampliam o mercado');
 });
 
 test('comprar o país inteiro: exige cidade grande e relação; paga impostos extras e não pode ser tomado', () => {
-  const s = rica(350); s.cash = 5e10; s.pop = 12000; s.world.rel.imperio = 80;
+  const s = rica(350); s.cash = 5e10; s.pop = 40000; s.world.rel.imperio = 80;
   assert.equal(Sim.annexColony(s, 'imperio').ok, false, 'precisa ter a cidade lá');
   assert.ok(Sim.buyColony(s, 'imperio').ok);
-  s.pop = 12000; s.world.rel.imperio = 80; const i0 = Sim.colonyInfo(s, 'imperio'); assert.ok(i0.canAnnex && i0.annexPrice > 5 * Sim.cityPrice(s, 'imperio'));
+  s.pop = 40000; s.world.rel.imperio = 80; const i0 = Sim.colonyInfo(s, 'imperio'); assert.ok(i0.canAnnex && i0.annexPrice > 5 * Sim.cityPrice(s, 'imperio'));
   const c = s.cash; assert.ok(Sim.annexColony(s, 'imperio').ok, 'compra o país'); assert.equal(s.cash, c - i0.annexPrice);
   assert.ok(Sim.colonyInfo(s, 'imperio').nation); assert.equal(Sim.annexColony(s, 'imperio').ok, false);
-  const peq = rica(351); peq.cash = 5e10; peq.pop = 12000; peq.world.rel.vizinha = 80; Sim.buyColony(peq, 'vizinha');
+  const peq = rica(351); peq.cash = 5e10; peq.pop = 40000; peq.world.rel.vizinha = 80; Sim.buyColony(peq, 'vizinha');
   assert.equal(Sim.colonyInfo(peq, 'vizinha').canAnnex, false, 'cidade pequena demais para virar país');
-  for (let m = 0; m < 10; m++) { s.world.rel.imperio = 5; s.pop = 12000; s.lowHappy = 0; s.cash = 5e10; Sim.step(s); }
+  for (let m = 0; m < 10; m++) { s.world.rel.imperio = 5; s.pop = 40000; s.lowHappy = 0; s.cash = 5e10; Sim.step(s); }
   assert.ok(Sim.colonyInfo(s, 'imperio').owned, 'país seu não é tomado');
 });
 
@@ -1519,4 +1519,22 @@ test('mapa 3D: cidades de outros países crescem com o nível e são sempre igua
   assert.equal(a.tiles[0], 'prefeitura');
   assert.ok(b.lv.filter(v => v > 1).length > a.lv.filter(v => v > 1).length, 'nível alto tem prédios mais evoluídos');
   b.tiles.concat(n.tiles).forEach(k => assert.ok(k === 'prefeitura' || Sim.BUILDINGS[k], k));
+});
+
+test('política mundial: a prosperidade das cidades oscila e uma sobe quando outra cai', () => {
+  const s = rica(360); s.cash = 5e10; s.pop = 25000; const ks = Sim.NEIGHBORS.map(n => n.key);
+  let max = 0, min = 9, soma = 0, n = 0, reviravoltas = 0;
+  for (let m = 0; m < 300; m++) { s.pop = 25000; s.lowHappy = 0; s.cash = 5e10; Sim.step(s); ks.forEach(k => { const f = s.world.fort[k]; max = Math.max(max, f); min = Math.min(min, f); soma += f; n++; }); }
+  reviravoltas = s.hist.filter(h => h.t.includes('Reviravolta política')).length;
+  assert.ok(max > 1.35 && min < 0.7, `oscila: ${min} a ${max}`); assert.ok(reviravoltas >= 5, 'eventos de reviravolta: ' + reviravoltas);
+  assert.ok(Math.abs(soma / n - 1) < 0.2, 'em média continua perto de 1: ' + soma / n);
+});
+
+test('cidade de fora em crise política perde dinheiro e em fase de ouro lucra muito; o preço também oscila', () => {
+  const s = rica(361); s.cash = 5e10; s.pop = 25000; s.world.rel.reino = 80; assert.ok(Sim.buyColony(s, 'reino').ok);
+  const rodar = f => { let net = 0; for (let m = 0; m < 6; m++) { s.pop = 25000; s.lowHappy = 0; s.cash = 5e10; s.world.rel.reino = 80; s.world.fort.reino = f; Sim.step(s); s.world.fort.reino = f; net = s.cities.reino.report.net; } return net; };
+  const crise = rodar(0.4), ouro = rodar(1.6);
+  assert.ok(crise < 0, 'perde dinheiro em crise: ' + crise); assert.ok(ouro > 0 && ouro > crise * -1, 'lucra em fase de ouro: ' + ouro);
+  const t = rica(362); t.cash = 5e10; t.pop = 25000; t.world.fort.imperio = 0.5; const barato = Sim.cityPrice(t, 'imperio'); t.world.fort.imperio = 1.6; const caro = Sim.cityPrice(t, 'imperio');
+  assert.ok(caro > barato * 3, 'cidade em crise sai barata'); assert.ok(Sim.cityPrice(t, 'imperio') > 1e8, 'cidades são muito caras');
 });
